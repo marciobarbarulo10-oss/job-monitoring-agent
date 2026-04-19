@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Agent Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <h1>Job Agent Dashboard</h1>
+    <p id="subtitulo">Marcio Beraldo — Importacao / Supply Chain / Comex</p>
+  </div>
+  <div class="header-right">
+    <span class="badge-alert" id="badge-novas"></span>
+    <span class="last-update" id="last-update">Atualizando...</span>
+    <button class="btn-refresh" onclick="refreshAll()">Atualizar</button>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="container">
+
+  <!-- METRICS -->
+  <div class="metrics-grid" id="metrics-grid">
+    <div class="metric-card m-blue">
+      <div class="label">Total Vagas</div>
+      <div class="value" id="m-total">—</div>
+      <div class="sub">encontradas</div>
+    </div>
+    <div class="metric-card m-green">
+      <div class="label">Novas</div>
+      <div class="value" id="m-novas">—</div>
+      <div class="sub">nao aplicadas</div>
+    </div>
+    <div class="metric-card m-yellow">
+      <div class="label">Aplicadas</div>
+      <div class="value" id="m-aplicadas">—</div>
+      <div class="sub">candidaturas</div>
+    </div>
+    <div class="metric-card m-purple">
+      <div class="label">Em Analise</div>
+      <div class="value" id="m-analise">—</div>
+      <div class="sub">aguardando</div>
+    </div>
+    <div class="metric-card m-green">
+      <div class="label">Entrevistas</div>
+      <div class="value" id="m-entrevista">—</div>
+      <div class="sub">agendadas</div>
+    </div>
+    <div class="metric-card m-orange">
+      <div class="label">Conversao</div>
+      <div class="value" id="m-conv">—</div>
+      <div class="sub">% aplicadas/total</div>
+    </div>
+    <div class="metric-card m-blue">
+      <div class="label">Score Medio</div>
+      <div class="value" id="m-score">—</div>
+      <div class="sub" id="m-score-sub">aderencia ao perfil</div>
+    </div>
+    <div class="metric-card m-red">
+      <div class="label">Encerradas</div>
+      <div class="value" id="m-encerradas">—</div>
+      <div class="sub">nao mais ativas</div>
+    </div>
+  </div>
+
+  <!-- PIPELINE CRM -->
+  <div class="pipeline">
+    <div class="section-title">Funil de Candidatura (CRM)</div>
+    <div class="pipeline-track" id="pipeline-track">
+      <div class="pipeline-stage ps-nova"><div class="ps-label">Nova</div><div class="ps-count" id="ps-nova">—</div></div>
+      <div class="pipeline-stage ps-aplicada"><div class="ps-label">Aplicada</div><div class="ps-count" id="ps-aplicada">—</div></div>
+      <div class="pipeline-stage ps-em_analise"><div class="ps-label">Em Analise</div><div class="ps-count" id="ps-em_analise">—</div></div>
+      <div class="pipeline-stage ps-entrevista"><div class="ps-label">Entrevista</div><div class="ps-count" id="ps-entrevista">—</div></div>
+      <div class="pipeline-stage ps-rejeitada"><div class="ps-label">Rejeitada</div><div class="ps-count" id="ps-rejeitada">—</div></div>
+      <div class="pipeline-stage ps-encerrada"><div class="ps-label">Encerrada</div><div class="ps-count" id="ps-encerrada">—</div></div>
+    </div>
+  </div>
+
+  <!-- TOP VAGAS + PERFIL -->
+  <div class="two-col">
+
+    <!-- TOP 5 VAGAS -->
+    <div class="panel">
+      <div class="section-title">Top Vagas Para Voce</div>
+      <div id="top-vagas-list">
+        <div class="skeleton" style="height:60px; margin-bottom:8px"></div>
+        <div class="skeleton" style="height:60px; margin-bottom:8px"></div>
+        <div class="skeleton" style="height:60px"></div>
+      </div>
+    </div>
+
+    <!-- PERFIL / ADERENCIA -->
+    <div class="panel">
+      <div class="section-title">Analise do Perfil</div>
+      <div class="perfil-aderencia">
+        <div class="aderencia-valor" id="p-score">—</div>
+        <div class="aderencia-label">Aderencia Media / 10</div>
+        <div class="aderencia-sub" id="p-pct">— % das vagas com score acima de 6</div>
+      </div>
+      <div class="kw-group">
+        <div class="kw-group-title">Competencias Core (Peso 3)</div>
+        <div class="kw-tags" id="p-fortes"></div>
+      </div>
+      <div class="kw-group">
+        <div class="kw-group-title">Competencias Tecnicas (Peso 2)</div>
+        <div class="kw-tags" id="p-medios"></div>
+      </div>
+      <div class="kw-group">
+        <div class="kw-group-title">Keywords mais buscadas nas vagas</div>
+        <div id="p-demand"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- VAGAS DISPONIVEIS -->
+  <div class="panel" style="margin-bottom:24px">
+    <div class="section-header">
+      <div class="section-title" style="margin-bottom:0">Vagas Disponiveis</div>
+      <div class="filters">
+        <input class="search-input" type="text" id="search-vagas" placeholder="Buscar..." oninput="debounceSearch()">
+        <button class="filter-btn active" onclick="setFilter('', this)">Todas</button>
+        <button class="filter-btn" onclick="setFilter('nova', this)">Novas</button>
+        <button class="filter-btn" onclick="setFilter('aplicada', this)">Aplicadas</button>
+        <button class="filter-btn" onclick="setFilter('encerrada', this)">Encerradas</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Score</th>
+            <th>Titulo</th>
+            <th>Empresa</th>
+            <th>Localizacao</th>
+            <th>Fonte</th>
+            <th>Status</th>
+            <th>Encontrada</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody id="vagas-tbody"></tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <button class="page-btn" id="btn-prev" onclick="changePage(-1)" disabled>Anterior</button>
+      <span class="page-info" id="page-info"></span>
+      <button class="page-btn" id="btn-next" onclick="changePage(1)">Proxima</button>
+    </div>
+  </div>
+
+  <!-- CANDIDATURAS -->
+  <div class="panel" style="margin-bottom:24px">
+    <div class="section-title">Candidaturas em Andamento</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Titulo</th>
+            <th>Empresa</th>
+            <th>Status</th>
+            <th>Aplicada em</th>
+            <th>Ultima verificacao</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody id="cand-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- MODAL HISTORICO -->
+<div class="modal-overlay" id="modal-hist">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">Fechar</button>
+    <div class="modal-title" id="modal-titulo"></div>
+    <div class="modal-sub" id="modal-empresa"></div>
+    <div id="modal-timeline"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let _vagasPage  = 1;
+let _vagasFilter = '';
+let _vagasSearch = '';
+let _vagasTotal  = 0;
+let _searchTimer = null;
+
+const LIMIT = 20;
+
+const STATUS_LABELS = {
+  nova: 'Nova', aplicada: 'Aplicada', em_analise: 'Em Analise',
+  entrevista: 'Entrevista', rejeitada: 'Rejeitada', encerrada: 'Encerrada',
+};
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+function scoreClass(s) {
+  return s >= 7 ? 'score-green' : s >= 5 ? 'score-yellow' : 'score-red';
+}
+
+function pillClass(status) {
+  return `status-pill pill-${status}`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg, err=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (err ? ' err' : '');
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+// ── FETCH HELPERS ──────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+// ── METRICS ───────────────────────────────────────────────────────────────
+async function loadMetrics() {
+  const d = await fetchJSON('/api/metrics');
+  document.getElementById('m-total').textContent     = d.total;
+  document.getElementById('m-novas').textContent     = d.novas;
+  document.getElementById('m-aplicadas').textContent = d.aplicadas;
+  document.getElementById('m-analise').textContent   = d.em_analise;
+  document.getElementById('m-entrevista').textContent= d.entrevista;
+  document.getElementById('m-conv').textContent      = d.taxa_conversao + '%';
+  document.getElementById('m-score').textContent     = d.media_score;
+  document.getElementById('m-score-sub').textContent = d.pct_acima_6 + '% acima de 6';
+  document.getElementById('m-encerradas').textContent= d.encerradas;
+  document.getElementById('last-update').textContent = 'Atualizado: ' + d.atualizado_em;
+
+  // Badge novas
+  const badge = document.getElementById('badge-novas');
+  if (d.novas > 0) {
+    badge.textContent = d.novas + ' novas';
+    badge.classList.add('show');
+  } else {
+    badge.classList.remove('show');
+  }
+}
+
+// ── PIPELINE ──────────────────────────────────────────────────────────────
+async function loadPipeline() {
+  const d = await fetchJSON('/api/pipeline');
+  for (const [k, v] of Object.entries(d)) {
+    const el = document.getElementById('ps-' + k);
+    if (el) el.textContent = v;
+  }
+}
+
+// ── TOP VAGAS ─────────────────────────────────────────────────────────────
+async function loadTopVagas() {
+  const vagas = await fetchJSON('/api/top-vagas');
+  const el = document.getElementById('top-vagas-list');
+
+  if (!vagas.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:12px 0">Nenhuma vaga com score alto ainda. Execute o scheduler para buscar vagas.</p>';
+    return;
+  }
+
+  el.innerHTML = vagas.map((v, i) => {
+    const rank = i + 1;
+    const kws  = v.keywords.slice(0, 4).map(k => `<span class="tv-kw">${esc(k)}</span>`).join('');
+    const rankClass = rank <= 3 ? `rank-${rank}` : '';
+    const applied = v.aplicada;
+    return `
+      <div class="top-vaga">
+        <div class="tv-rank ${rankClass}">${rank}</div>
+        <div class="tv-info">
+          <div class="tv-titulo" title="${esc(v.titulo)}">${esc(v.titulo)}</div>
+          <div class="tv-empresa">${esc(v.empresa)} &mdash; ${esc(v.localizacao)}</div>
+          <div class="tv-kws">${kws}</div>
+        </div>
+        <div class="tv-right">
+          <span class="score-badge ${scoreClass(v.score)}">${v.score}</span>
+          <div class="tv-actions">
+            <a href="${esc(v.url)}" target="_blank" class="btn-sm btn-link">Abrir</a>
+            <button class="btn-sm btn-apply" ${applied ? 'disabled' : ''} onclick="marcarAplicada(${v.id}, this)">
+              ${applied ? 'Aplicada' : 'Aplicar'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── VAGAS TABLE ───────────────────────────────────────────────────────────
+async function loadVagas() {
+  const url = `/api/vagas?page=${_vagasPage}&limit=${LIMIT}&status=${_vagasFilter}&q=${encodeURIComponent(_vagasSearch)}`;
+  const data = await fetchJSON(url);
+  _vagasTotal = data.total;
+
+  const tbody = document.getElementById('vagas-tbody');
+  tbody.innerHTML = data.vagas.map(v => `
+    <tr>
+      <td><span class="score-badge ${scoreClass(v.score)}">${v.score}</span></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.titulo)}">${esc(v.titulo)}</td>
+      <td>${esc(v.empresa)}</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.localizacao)}</td>
+      <td><span class="fonte-tag">${esc(v.fonte)}</span></td>
+      <td>
+        <select class="status-select" onchange="updateStatus(${v.id}, this.value)">
+          ${Object.entries(STATUS_LABELS).map(([k, l]) =>
+            `<option value="${k}" ${v.status === k ? 'selected' : ''}>${l}</option>`
+          ).join('')}
+        </select>
+      </td>
+      <td>${esc(v.data_encontrada)}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <a href="${esc(v.url)}" target="_blank" class="btn-sm btn-link">Abrir</a>
+        ${!v.aplicada ? `<button class="btn-sm btn-apply" onclick="marcarAplicada(${v.id}, this)">Aplicar</button>` : ''}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">Nenhuma vaga encontrada</td></tr>';
+
+  // Pagination
+  const totalPages = Math.ceil(_vagasTotal / LIMIT);
+  document.getElementById('page-info').textContent = `Pag ${_vagasPage} de ${totalPages || 1} (${_vagasTotal} vagas)`;
+  document.getElementById('btn-prev').disabled = _vagasPage <= 1;
+  document.getElementById('btn-next').disabled = _vagasPage >= totalPages;
+}
+
+function setFilter(status, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _vagasFilter = status;
+  _vagasPage = 1;
+  loadVagas();
+}
+
+function changePage(delta) {
+  _vagasPage += delta;
+  loadVagas();
+  window.scrollTo({ top: document.getElementById('vagas-tbody').offsetTop - 80, behavior: 'smooth' });
+}
+
+function debounceSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => {
+    _vagasSearch = document.getElementById('search-vagas').value;
+    _vagasPage = 1;
+    loadVagas();
+  }, 350);
+}
+
+// ── CANDIDATURAS ──────────────────────────────────────────────────────────
+async function loadCandidaturas() {
+  const data = await fetchJSON('/api/candidaturas');
+  const tbody = document.getElementById('cand-tbody');
+
+  tbody.innerHTML = data.map(c => `
+    <tr>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.titulo)}">${esc(c.titulo)}</td>
+      <td>${esc(c.empresa)}</td>
+      <td>
+        <select class="status-select" onchange="updateStatus(${c.id}, this.value)">
+          ${Object.entries(STATUS_LABELS).map(([k, l]) =>
+            `<option value="${k}" ${c.status === k ? 'selected' : ''}>${l}</option>`
+          ).join('')}
+        </select>
+      </td>
+      <td>${esc(c.data_aplicacao) || '—'}</td>
+      <td>${esc(c.last_check) || '—'}</td>
+      <td style="display:flex;gap:6px">
+        <a href="${esc(c.url)}" target="_blank" class="btn-sm btn-link">Abrir</a>
+        <button class="btn-sm" style="color:var(--purple);border-color:rgba(168,85,247,.3)" onclick="openHistorico(${c.id})">Historico</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Nenhuma candidatura registrada ainda</td></tr>';
+}
+
+// ── PERFIL ────────────────────────────────────────────────────────────────
+async function loadPerfil() {
+  const [d, metrics] = await Promise.all([fetchJSON('/api/perfil'), fetchJSON('/api/metrics')]);
+
+  document.getElementById('p-score').textContent = metrics.media_score;
+  document.getElementById('p-pct').textContent   = metrics.pct_acima_6 + '% das vagas com score acima de 6';
+
+  document.getElementById('p-fortes').innerHTML =
+    d.fortes.map(k => `<span class="kw-tag kw-forte">${esc(k)}</span>`).join('');
+
+  document.getElementById('p-medios').innerHTML =
+    d.medios.map(k => `<span class="kw-tag kw-medio">${esc(k)}</span>`).join('');
+
+  const maxCount = Math.max(...d.top_keywords_vagas.map(x => x.count), 1);
+  document.getElementById('p-demand').innerHTML = d.top_keywords_vagas.map(x => `
+    <div class="kw-demand-item">
+      <span class="kw-tag kw-demand" style="min-width:120px;text-align:center">${esc(x.kw)}</span>
+      <div class="kw-demand-bar-wrap">
+        <div class="kw-demand-bar" style="width:${Math.round(x.count/maxCount*100)}%"></div>
+      </div>
+      <span class="kw-demand-count">${x.count}</span>
+    </div>
+  `).join('');
+}
+
+// ── ACOES ─────────────────────────────────────────────────────────────────
+async function marcarAplicada(id, btn) {
+  btn.disabled = true;
+  const r = await postJSON('/api/marcar-aplicada', { id });
+  if (r.ok) {
+    showToast('Candidatura registrada!');
+    await refreshAll();
+  } else {
+    showToast(r.erro || 'Erro ao marcar', true);
+    btn.disabled = false;
+  }
+}
+
+async function updateStatus(id, status) {
+  const r = await postJSON('/api/atualizar-status', { id, status });
+  if (r.ok) {
+    showToast('Status atualizado: ' + STATUS_LABELS[status]);
+    loadMetrics();
+    loadPipeline();
+    loadCandidaturas();
+  } else {
+    showToast(r.erro || 'Erro ao atualizar', true);
+  }
+}
+
+// ── HISTORICO MODAL ───────────────────────────────────────────────────────
+async function openHistorico(id) {
+  const d = await fetchJSON('/api/historico/' + id);
+  document.getElementById('modal-titulo').textContent = d.vaga.titulo || 'Vaga';
+  document.getElementById('modal-empresa').textContent = d.vaga.empresa || '';
+  document.getElementById('modal-timeline').innerHTML = d.historico.length
+    ? d.historico.map(h => `
+        <div class="timeline-item">
+          <div class="tl-dot"></div>
+          <div class="tl-content">
+            <div class="tl-ts">${esc(h.timestamp)}</div>
+            <div class="tl-evt">${esc(h.status_old || '—')} &rarr; <strong>${esc(STATUS_LABELS[h.status_new] || h.status_new)}</strong></div>
+            ${h.detalhes ? `<div class="tl-det">${esc(h.detalhes)}</div>` : ''}
+          </div>
+        </div>`).join('')
+    : '<p style="color:var(--muted);font-size:13px">Nenhum historico registrado.</p>';
+
+  document.getElementById('modal-hist').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal-hist').classList.remove('show');
+}
+
+document.getElementById('modal-hist').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ── REFRESH ALL ────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([
+    loadMetrics(),
+    loadPipeline(),
+    loadTopVagas(),
+    loadVagas(),
+    loadCandidaturas(),
+    loadPerfil(),
+  ]);
+}
+
+// ── AUTO-REFRESH (60s) ─────────────────────────────────────────────────────
+setInterval(refreshAll, 60000);
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+refreshAll();
+</script>
+
+</body>
+</html>
