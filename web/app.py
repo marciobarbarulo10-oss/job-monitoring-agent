@@ -554,6 +554,207 @@ def api_perfil():
         return jsonify({"erro": str(e)}), 500
 
 
+# ── PERFIL LINKEDIN ───────────────────────────────────────────────────────────
+
+@app.route("/api/profile/linkedin", methods=["POST"])
+def api_import_linkedin():
+    """Extrai perfil do LinkedIn via Playwright e salva em config/profile.yml."""
+    data = request.get_json() or {}
+    linkedin_url = data.get("url", "").strip()
+    manual_data = data.get("manual")
+
+    try:
+        from core.linkedin_extractor import LinkedInExtractor
+        ex = LinkedInExtractor()
+
+        if manual_data:
+            extracted = ex.from_manual({**manual_data, "linkedin_url": linkedin_url})
+        elif linkedin_url:
+            extracted = ex.extract(linkedin_url)
+            if extracted.get("error"):
+                return jsonify({"ok": False, "error": extracted["error"],
+                                "message": extracted.get("message", ""),
+                                "fallback": "manual"}), 200
+        else:
+            return jsonify({"ok": False, "error": "url_or_manual_required"}), 400
+
+        saved = ex.save_to_yml(extracted)
+
+        # Persiste no banco
+        conn = _db()
+        try:
+            conn.execute("UPDATE user_profiles SET is_active=0")
+            conn.execute(
+                "INSERT INTO user_profiles (source, linkedin_url, data_json, imported_at, is_active) "
+                "VALUES (?, ?, ?, ?, 1)",
+                (extracted.get("method", "manual"), linkedin_url,
+                 json.dumps(extracted, ensure_ascii=False),
+                 datetime.utcnow().isoformat()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        return jsonify({"ok": saved, "profile": extracted,
+                        "message": "Perfil importado e salvo com sucesso!" if saved else "Falha ao salvar"})
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/profile/linkedin")
+def api_get_linkedin_profile():
+    """Retorna o perfil importado mais recente."""
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT data_json, source, imported_at FROM user_profiles "
+            "WHERE is_active=1 ORDER BY imported_at DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({"ok": False, "message": "Nenhum perfil importado ainda."})
+
+    try:
+        data = json.loads(row["data_json"])
+    except Exception:
+        data = {}
+
+    return jsonify({"ok": True, "profile": data, "source": row["source"],
+                    "imported_at": row["imported_at"]})
+
+
+# ── APLICAÇÃO ASSISTIDA ────────────────────────────────────────────────────────
+
+@app.route("/api/apply/<int:job_id>", methods=["POST"])
+def api_apply_assisted(job_id):
+    """Candidatura assistida: marca como aplicada + retorna conteúdo de suporte."""
+    data = request.get_json() or {}
+    level = int(data.get("level", 1))
+
+    conn = _db()
+    try:
+        vaga = conn.execute("SELECT * FROM vagas WHERE id=?", (job_id,)).fetchone()
+        if not vaga:
+            return jsonify({"ok": False, "error": "Vaga nao encontrada"}), 404
+
+        vaga_dict = {
+            "id": vaga["id"], "titulo": vaga["titulo"], "empresa": vaga["empresa"],
+            "localizacao": vaga["localizacao"], "descricao": vaga["descricao"],
+            "url": vaga["url"], "score": vaga["score"], "fonte": vaga["fonte"],
+        }
+
+        # Marca como aplicada
+        conn.execute(
+            "UPDATE vagas SET aplicada=1, status='aplicada', data_aplicacao=? WHERE id=?",
+            (datetime.utcnow().isoformat(), job_id),
+        )
+        conn.execute(
+            "INSERT INTO status_history (vaga_id, status_old, status_new, timestamp, detalhes) "
+            "VALUES (?, 'nova', 'aplicada', ?, 'Aplicada via Assistente v3')",
+            (job_id, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        from core.application_engine import ApplicationEngine
+        engine = ApplicationEngine()
+        result = engine.apply(vaga_dict, level=level)
+        return jsonify({"ok": True, "applied": True, **result})
+    except Exception as e:
+        return jsonify({"ok": True, "applied": True, "level": 1,
+                        "url": vaga_dict["url"],
+                        "error": f"Erro no engine: {str(e)}"})
+
+
+@app.route("/api/assist/<int:job_id>")
+def api_get_assist(job_id):
+    """Retorna conteúdo de assistência para a vaga (sem marcar como aplicada)."""
+    conn = _db()
+    try:
+        vaga = conn.execute("SELECT * FROM vagas WHERE id=?", (job_id,)).fetchone()
+        if not vaga:
+            return jsonify({"ok": False, "error": "Vaga nao encontrada"}), 404
+        vaga_dict = dict(vaga)
+    finally:
+        conn.close()
+
+    try:
+        from core.application_engine import ApplicationEngine
+        engine = ApplicationEngine()
+        assist = engine.get_assist_content(vaga_dict)
+
+        from core.score_explainer import ScoreExplainer
+        explainer = ScoreExplainer()
+        explanation = explainer.explain(vaga_dict)
+
+        return jsonify({"ok": True, "assist": assist, "explanation": explanation})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── AÇÕES RÁPIDAS ──────────────────────────────────────────────────────────────
+
+@app.route("/api/vagas/<int:job_id>/favorite", methods=["POST"])
+def api_toggle_favorite(job_id):
+    """Alterna favorito de uma vaga."""
+    conn = _db()
+    try:
+        row = conn.execute("SELECT favorited FROM vagas WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Vaga nao encontrada"}), 404
+        new_val = 0 if row["favorited"] else 1
+        conn.execute("UPDATE vagas SET favorited=? WHERE id=?", (new_val, job_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "favorited": bool(new_val)})
+
+
+@app.route("/api/vagas/<int:job_id>/ignore", methods=["POST"])
+def api_ignore_vaga(job_id):
+    """Marca vaga como ignorada e atualiza status."""
+    conn = _db()
+    try:
+        conn.execute("UPDATE vagas SET ignored=1, status='encerrada' WHERE id=?", (job_id,))
+        conn.execute(
+            "INSERT INTO status_history (vaga_id, status_old, status_new, timestamp, detalhes) "
+            "VALUES (?, 'nova', 'encerrada', ?, 'Ignorada pelo usuario')",
+            (job_id, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+# ── EVOLUÇÃO ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/stats/evolution")
+def api_evolution():
+    """Evolução semanal de candidaturas e resultados positivos."""
+    conn = _db()
+    try:
+        rows = conn.execute(
+            """SELECT strftime('%Y-W%W', data_aplicacao) as semana,
+                      COUNT(*) as aplicadas,
+                      SUM(CASE WHEN status IN ('entrevista','proposta') THEN 1 ELSE 0 END) as positivas
+               FROM vagas
+               WHERE aplicada=1 AND data_aplicacao IS NOT NULL
+               GROUP BY semana ORDER BY semana DESC LIMIT 12"""
+        ).fetchall()
+    finally:
+        conn.close()
+
+    data = [{"semana": r[0], "aplicadas": r[1], "positivas": r[2]} for r in rows]
+    data.reverse()
+    return jsonify(data)
+
+
 # ── HEALTH CHECK ──────────────────────────────────────────────────────────────
 
 @app.route("/health")

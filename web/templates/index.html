@@ -117,6 +117,59 @@
     .col-acoes  { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
 
     .btn-feedback { color:var(--purple) !important; border-color:rgba(168,85,247,.3) !important; }
+
+    /* ── APLICAR MODAL ──────────────────────────────────────────────────────── */
+    .assist-modal { max-width:680px; max-height:85vh; overflow-y:auto; }
+    .assist-section { margin-bottom:16px; }
+    .assist-section h4 { font-size:12px; color:var(--accent); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .match-bar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .match-pct { font-size:28px; font-weight:700; color:var(--accent); }
+    .match-bar-wrap { flex:1; background:var(--bg3); border-radius:6px; height:14px; overflow:hidden; }
+    .match-bar-fill { height:100%; border-radius:6px; background:var(--accent); transition:width .4s; }
+    .kw-matched { background:rgba(34,197,94,.15); color:#4ade80; border:1px solid rgba(34,197,94,.3); padding:2px 8px; border-radius:4px; font-size:11px; display:inline-block; margin:2px; }
+    .kw-missing { background:rgba(239,68,68,.15); color:#f87171; border:1px solid rgba(239,68,68,.3); padding:2px 8px; border-radius:4px; font-size:11px; display:inline-block; margin:2px; }
+    .prefill-field { margin-bottom:10px; }
+    .prefill-label { font-size:11px; color:var(--muted); margin-bottom:3px; }
+    .prefill-value {
+      background:var(--bg3); border:1px solid var(--border); border-radius:6px;
+      padding:8px 10px; font-size:12px; width:100%; box-sizing:border-box;
+      color:var(--text); font-family:inherit; cursor:pointer; resize:vertical;
+    }
+    .prefill-copy-btn { float:right; background:none; border:1px solid var(--border); color:var(--muted); padding:2px 8px; border-radius:4px; cursor:pointer; font-size:10px; margin-top:2px; }
+    .platform-steps { list-style:none; counter-reset:steps; }
+    .platform-steps li { counter-increment:steps; padding:4px 0 4px 28px; position:relative; font-size:12px; color:var(--muted); }
+    .platform-steps li::before { content:counter(steps); position:absolute; left:0; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; font-size:10px; display:flex; align-items:center; justify-content:center; top:3px; }
+    .platform-badge { display:inline-block; padding:2px 10px; border-radius:10px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+    .plat-gupy     { background:rgba(99,102,241,.2); color:#a5b4fc; }
+    .plat-linkedin { background:rgba(14,118,168,.2); color:#7dd3fc; }
+    .plat-indeed   { background:rgba(245,158,11,.2); color:#fcd34d; }
+    .plat-vagas    { background:rgba(34,197,94,.2); color:#4ade80; }
+
+    /* ── LINKEDIN IMPORT ────────────────────────────────────────────────────── */
+    .li-import-panel { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:20px; }
+    .li-import-panel h3 { font-size:14px; margin-bottom:10px; color:var(--accent); }
+    .li-url-row { display:flex; gap:8px; margin-bottom:10px; }
+    .li-url-row input { flex:1; background:var(--bg2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:8px 10px; font-size:13px; }
+    .li-manual-form { display:none; margin-top:12px; }
+    .li-manual-form.show { display:block; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+    .form-row .form-group { margin-bottom:0; }
+    .li-imported-info { background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.2); border-radius:6px; padding:12px; margin-top:10px; display:none; }
+    .li-imported-info.show { display:block; }
+
+    /* ── QUICK ACTIONS ──────────────────────────────────────────────────────── */
+    .btn-fav     { color:#f59e0b !important; }
+    .btn-fav.on  { background:rgba(245,158,11,.2) !important; border-color:#f59e0b !important; }
+    .btn-ignore  { color:var(--muted) !important; }
+    .btn-assist  { color:#06b6d4 !important; border-color:rgba(6,182,212,.3) !important; }
+
+    /* ── EVOLUÇÃO CHART ─────────────────────────────────────────────────────── */
+    .evo-chart { display:flex; align-items:flex-end; gap:6px; height:60px; padding:8px 0; }
+    .evo-bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; }
+    .evo-bar-inner { width:100%; background:var(--bg3); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex:1; }
+    .evo-bar-fill  { width:100%; background:var(--accent); position:absolute; bottom:0; border-radius:3px 3px 0 0; transition:height .4s; }
+    .evo-bar-pos   { width:100%; background:var(--green); position:absolute; bottom:0; opacity:.7; border-radius:3px 3px 0 0; }
+    .evo-label { font-size:9px; color:var(--muted); text-align:center; }
   </style>
 </head>
 <body>
@@ -206,13 +259,19 @@
     </div>
   </div>
 
+  <!-- EVOLUÇÃO -->
+  <div class="panel" id="evo-panel" style="margin-bottom:24px;display:none">
+    <div class="section-title">Evolucao de Candidaturas</div>
+    <div class="evo-chart" id="evo-chart"></div>
+  </div>
+
   <!-- TABS -->
   <div class="tabs">
     <button class="tab-btn active" data-tab="pipeline">Pipeline</button>
     <button class="tab-btn" data-tab="cvs">CVs Gerados</button>
     <button class="tab-btn" data-tab="feedback">Feedback & Aprendizado</button>
     <button class="tab-btn" data-tab="mercado">Mercado</button>
-    <button class="tab-btn" data-tab="config">Configuracoes</button>
+    <button class="tab-btn" data-tab="config">Perfil & Config</button>
   </div>
 
   <!-- TAB: PIPELINE -->
@@ -318,6 +377,65 @@
 
   <!-- TAB: CONFIG -->
   <div class="tab-panel" id="tab-config">
+
+    <!-- Importar LinkedIn -->
+    <div class="panel config-section">
+      <div class="section-title">Importar Perfil do LinkedIn</div>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+        Cole a URL do seu perfil LinkedIn para extrair dados automaticamente.
+        Se bloqueado, use a entrada manual abaixo.
+      </p>
+      <div class="li-import-panel">
+        <div class="li-url-row">
+          <input type="url" id="li-url-input" placeholder="https://www.linkedin.com/in/seu-perfil" />
+          <button class="btn-primary" id="btn-li-extract" onclick="importarLinkedIn()">Extrair Perfil</button>
+          <button class="btn-refresh" onclick="toggleManualForm()">Entrada Manual</button>
+        </div>
+
+        <!-- Formulário manual -->
+        <div class="li-manual-form" id="li-manual-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nome completo</label>
+              <input class="prefill-value" type="text" id="li-name" placeholder="Seu nome" style="min-height:auto;padding:6px 8px">
+            </div>
+            <div class="form-group">
+              <label>Cargo atual / Headline</label>
+              <input class="prefill-value" type="text" id="li-headline" placeholder="Analista de Importacao Pleno" style="min-height:auto;padding:6px 8px">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Localização</label>
+              <input class="prefill-value" type="text" id="li-location" placeholder="Sao Paulo, SP" style="min-height:auto;padding:6px 8px">
+            </div>
+            <div class="form-group">
+              <label>Anos de experiência</label>
+              <input class="prefill-value" type="number" id="li-exp" placeholder="5" style="min-height:auto;padding:6px 8px">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Competências (separadas por vírgula)</label>
+            <textarea class="prefill-value" id="li-skills" rows="2" placeholder="Importacao, COMEX, ANVISA, Supply Chain, SISCOMEX"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Resumo profissional</label>
+            <textarea class="prefill-value" id="li-about" rows="3" placeholder="Profissional com X anos de experiencia em..."></textarea>
+          </div>
+          <button class="btn-primary" onclick="salvarManual()">Salvar Perfil Manual</button>
+        </div>
+
+        <!-- Perfil importado -->
+        <div class="li-imported-info" id="li-imported">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px" id="li-imp-name"></div>
+          <div style="font-size:12px;color:var(--muted)" id="li-imp-headline"></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px" id="li-imp-skills"></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px" id="li-imp-date"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status sistema -->
     <div class="panel config-section">
       <div class="section-title">Status do Sistema</div>
       <div class="cfg-status">
@@ -373,6 +491,59 @@
       <textarea id="fb-notes" rows="3" placeholder="Observacoes sobre a candidatura..."></textarea>
     </div>
     <button class="btn-primary" onclick="submitFeedback()">Registrar</button>
+  </div>
+</div>
+
+<!-- MODAL ASSISTENTE DE CANDIDATURA -->
+<div class="modal-overlay" id="modal-assist">
+  <div class="modal assist-modal">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div class="modal-title" id="assist-titulo"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+      <span class="platform-badge" id="assist-platform"></span>
+      <span style="color:var(--muted);font-size:12px" id="assist-empresa"></span>
+    </div>
+
+    <!-- Match -->
+    <div class="assist-section">
+      <h4>Match com Seu Perfil</h4>
+      <div class="match-bar">
+        <span class="match-pct" id="assist-pct">—</span>
+        <div class="match-bar-wrap"><div class="match-bar-fill" id="assist-bar" style="width:0%"></div></div>
+      </div>
+      <div style="margin-bottom:6px;font-size:12px;color:var(--muted)" id="assist-analysis"></div>
+      <div id="assist-matched"></div>
+      <div id="assist-missing" style="margin-top:4px"></div>
+    </div>
+
+    <!-- Passos da plataforma -->
+    <div class="assist-section" id="assist-steps-section" style="display:none">
+      <h4>Como Aplicar</h4>
+      <ul class="platform-steps" id="assist-steps"></ul>
+    </div>
+
+    <!-- Campos pré-preenchidos -->
+    <div class="assist-section" id="assist-fields-section" style="display:none">
+      <h4>Dados Preparados (Copie e Cole)</h4>
+      <div id="assist-fields"></div>
+    </div>
+
+    <!-- Respostas sugeridas -->
+    <div class="assist-section">
+      <h4>Respostas para Perguntas Comuns</h4>
+      <div id="assist-respostas"></div>
+    </div>
+
+    <!-- Ações -->
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <a id="assist-open-link" href="#" target="_blank" class="btn-primary" style="text-decoration:none">
+        Abrir Vaga
+      </a>
+      <button class="btn-primary" style="background:var(--green)" id="assist-apply-btn"
+              onclick="confirmarCandidatura()">
+        Confirmar Candidatura
+      </button>
+    </div>
   </div>
 </div>
 

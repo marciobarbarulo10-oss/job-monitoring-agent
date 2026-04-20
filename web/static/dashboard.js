@@ -166,6 +166,7 @@ async function loadVagas() {
       const earlyBadge = v.is_early ? '<span class="badge-early">JANELA</span>' : '';
       const suspBadge  = v.status === 'suspeita' ? '<span class="badge-susp">SUSPEITA</span>' : '';
       const methodTag  = v.score_method === 'semantic' ? '<sup title="Score semantico">AI</sup>' : '';
+      const favClass   = v.favorited ? 'btn-fav on' : 'btn-fav';
       return `
         <tr class="${v.status === 'suspeita' ? 'row-suspicious' : ''}">
           <td>
@@ -186,7 +187,9 @@ async function loadVagas() {
           <td>${esc(v.data_encontrada)}</td>
           <td class="col-acoes">
             <a href="${esc(v.url)}" target="_blank" class="btn-sm btn-link">Abrir</a>
-            ${!v.aplicada ? `<button class="btn-sm btn-apply" onclick="marcarAplicada(${v.id}, this)">Aplicar</button>` : ''}
+            <button class="btn-sm btn-assist" onclick="openAssistente(${v.id}, '${esc(v.titulo)}', '${esc(v.empresa)}', '${esc(v.fonte)}', '${esc(v.url)}')">Assistente</button>
+            <button class="btn-sm ${favClass}" id="fav-${v.id}" onclick="toggleFavorito(${v.id}, this)">Fav</button>
+            ${!v.aplicada ? `<button class="btn-sm btn-ignore" onclick="ignorarVaga(${v.id}, this)">Ignorar</button>` : ''}
             <button class="btn-sm" onclick="gerarCV(${v.id}, this)">CV</button>
             <button class="btn-sm btn-feedback" onclick="openFeedbackModal(${v.id}, '${esc(v.titulo)}')">FB</button>
           </td>
@@ -446,13 +449,20 @@ async function gerarRelatorioMercado() {
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 async function loadConfig() {
   try {
-    const r = await fetchJSON('/api/config/profile');
-    if (r.ok) {
-      document.getElementById('profile-editor').value = r.content;
-    }
-    const stats = await fetchJSON('/api/stats');
+    const [r, stats] = await Promise.all([
+      fetchJSON('/api/config/profile'),
+      fetchJSON('/api/stats'),
+    ]);
+    if (r.ok) document.getElementById('profile-editor').value = r.content;
     document.getElementById('cfg-cycle').textContent = stats.cycle_running ? 'Rodando' : 'Aguardando';
   } catch (e) { console.error('loadConfig:', e); }
+
+  try {
+    const li = await fetchJSON('/api/profile/linkedin');
+    if (li.ok && li.profile && li.profile.name) {
+      _renderImportedProfile(li.profile, li.source || '', li.imported_at || '');
+    }
+  } catch (_) { /* sem perfil importado ainda */ }
 }
 
 async function saveProfile() {
@@ -501,6 +511,223 @@ async function executarManutencao() {
     btn.disabled = false;
     btn.textContent = 'Executar Manutencao';
   }
+}
+
+// ── ASSISTENTE DE CANDIDATURA ─────────────────────────────────────────────────
+let _assistJobId = null;
+
+async function openAssistente(jobId, titulo, empresa, fonte, url) {
+  _assistJobId = jobId;
+
+  document.getElementById('assist-titulo').textContent = titulo;
+  document.getElementById('assist-empresa').textContent = empresa;
+  document.getElementById('assist-platform').textContent = fonte || '';
+  document.getElementById('assist-platform').className = 'platform-badge platform-' + (fonte || '').toLowerCase();
+  document.getElementById('assist-open-link').href = url || '#';
+  document.getElementById('assist-pct').textContent = '...';
+  document.getElementById('assist-bar').style.width = '0%';
+  document.getElementById('assist-analysis').textContent = '';
+  document.getElementById('assist-matched').innerHTML = '';
+  document.getElementById('assist-missing').innerHTML = '';
+  document.getElementById('assist-steps-section').style.display = 'none';
+  document.getElementById('assist-fields-section').style.display = 'none';
+  document.getElementById('assist-respostas').innerHTML = '<em style="color:var(--muted);font-size:12px">Carregando...</em>';
+
+  document.getElementById('modal-assist').classList.add('show');
+
+  try {
+    const d = await fetchJSON(`/api/assist/${jobId}`);
+
+    const exp = d.explanation || {};
+    const pct = exp.match_pct || 0;
+    document.getElementById('assist-pct').textContent = pct + '%';
+    document.getElementById('assist-bar').style.width = pct + '%';
+    document.getElementById('assist-analysis').textContent = exp.analysis || exp.recommendation || '';
+
+    const matched = exp.matched || [];
+    const missing = exp.missing || [];
+    document.getElementById('assist-matched').innerHTML = matched.length
+      ? '<div>' + matched.map(k => `<span class="kw-matched">${esc(k)}</span>`).join('') + '</div>'
+      : '';
+    document.getElementById('assist-missing').innerHTML = missing.length
+      ? '<div>' + missing.map(k => `<span class="kw-missing">${esc(k)}</span>`).join('') + '</div>'
+      : '';
+
+    const assist = d.assist || {};
+
+    const steps = assist.steps || [];
+    if (steps.length) {
+      document.getElementById('assist-steps').innerHTML = steps.map(s => `<li>${esc(s)}</li>`).join('');
+      document.getElementById('assist-steps-section').style.display = '';
+    }
+
+    const fields = assist.prefill_fields || [];
+    if (fields.length) {
+      document.getElementById('assist-fields').innerHTML = fields.map(f => `
+        <div class="prefill-item">
+          <label class="prefill-label">${esc(f.label)}</label>
+          <div class="prefill-value" onclick="this.select && this.select()" style="cursor:text"
+               ondblclick="navigator.clipboard.writeText('${esc(f.value)}')" title="Duplo-clique para copiar">${esc(f.value)}</div>
+          ${f.note ? `<div style="font-size:11px;color:var(--muted)">${esc(f.note)}</div>` : ''}
+        </div>`).join('');
+      document.getElementById('assist-fields-section').style.display = '';
+    }
+
+    const respostas = assist.respostas_comuns || [];
+    document.getElementById('assist-respostas').innerHTML = respostas.length
+      ? respostas.map(r => `
+          <div class="resposta-item" style="margin-bottom:10px">
+            <div style="font-size:12px;font-weight:600;color:var(--accent)">${esc(r.pergunta)}</div>
+            <div style="font-size:12px;color:var(--text);margin-top:3px">${esc(r.resposta)}</div>
+          </div>`).join('')
+      : '<em style="color:var(--muted);font-size:12px">Nenhuma resposta sugerida disponivel.</em>';
+
+  } catch (e) {
+    document.getElementById('assist-respostas').innerHTML =
+      `<em style="color:var(--red);font-size:12px">Erro ao carregar: ${esc(e.message)}</em>`;
+  }
+}
+
+async function confirmarCandidatura() {
+  if (!_assistJobId) return;
+  const btn = document.getElementById('assist-apply-btn');
+  btn.disabled = true;
+  btn.textContent = 'Registrando...';
+  try {
+    const r = await postJSON(`/api/apply/${_assistJobId}`, { level: 2 });
+    if (r.ok) {
+      showToast('Candidatura registrada com sucesso!');
+      closeModal();
+      await refreshAll();
+    } else {
+      showToast(r.error || 'Erro ao registrar candidatura', true);
+    }
+  } catch (e) {
+    showToast('Erro: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Confirmar Candidatura';
+  }
+}
+
+// ── FAVORITO / IGNORAR ────────────────────────────────────────────────────────
+async function toggleFavorito(id, btn) {
+  try {
+    const r = await postJSON(`/api/vagas/${id}/favorite`);
+    if (r.ok) {
+      if (r.favorited) {
+        btn.classList.add('on');
+        showToast('Vaga favoritada!');
+      } else {
+        btn.classList.remove('on');
+        showToast('Favorito removido');
+      }
+    }
+  } catch (e) { showToast('Erro: ' + e.message, true); }
+}
+
+async function ignorarVaga(id, btn) {
+  try {
+    const r = await postJSON(`/api/vagas/${id}/ignore`);
+    if (r.ok) {
+      const row = btn.closest('tr');
+      if (row) row.remove();
+      State.vagasTotal = Math.max(0, State.vagasTotal - 1);
+      showToast('Vaga ignorada');
+      loadMetrics();
+    }
+  } catch (e) { showToast('Erro: ' + e.message, true); }
+}
+
+// ── LINKEDIN / PERFIL MANUAL ──────────────────────────────────────────────────
+async function importarLinkedIn() {
+  const url = (document.getElementById('li-url-input').value || '').trim();
+  if (!url) { showToast('Informe a URL do perfil LinkedIn', true); return; }
+
+  const btn = document.getElementById('btn-li-extract');
+  btn.disabled = true;
+  btn.textContent = 'Extraindo...';
+
+  try {
+    const r = await postJSON('/api/profile/linkedin', { url });
+    if (r.ok) {
+      showToast(r.message || 'Perfil importado!');
+      _renderImportedProfile(r.profile, r.source || 'linkedin', r.imported_at || '');
+    } else {
+      showToast(r.error || 'Falha ao importar perfil', true);
+    }
+  } catch (e) {
+    showToast('Erro: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Extrair Perfil';
+  }
+}
+
+function toggleManualForm() {
+  document.getElementById('li-manual-form').classList.toggle('show');
+}
+
+async function salvarManual() {
+  const name     = document.getElementById('li-name').value.trim();
+  const headline = document.getElementById('li-headline').value.trim();
+  const location = document.getElementById('li-location').value.trim();
+  const exp_years= parseInt(document.getElementById('li-exp').value) || 0;
+  const skills   = document.getElementById('li-skills').value.trim();
+  const about    = document.getElementById('li-about').value.trim();
+
+  if (!name) { showToast('Informe pelo menos seu nome', true); return; }
+
+  try {
+    const r = await postJSON('/api/profile/linkedin', {
+      manual: { name, headline, location, exp_years, skills, about }
+    });
+    if (r.ok) {
+      showToast(r.message || 'Perfil salvo com sucesso!');
+      _renderImportedProfile(r.profile, 'manual', '');
+      document.getElementById('li-manual-form').classList.remove('show');
+    } else {
+      showToast(r.error || 'Erro ao salvar perfil', true);
+    }
+  } catch (e) { showToast('Erro: ' + e.message, true); }
+}
+
+function _renderImportedProfile(profile, source, importedAt) {
+  if (!profile) return;
+  const el = document.getElementById('li-imported');
+  document.getElementById('li-imp-name').textContent = profile.name || '—';
+  document.getElementById('li-imp-headline').textContent = profile.headline || '';
+  const skills = Array.isArray(profile.skills)
+    ? profile.skills.slice(0, 8).join(', ')
+    : (typeof profile.skills === 'object' ? Object.values(profile.skills || {}).flat().slice(0, 8).join(', ') : '');
+  document.getElementById('li-imp-skills').textContent = skills || '';
+  document.getElementById('li-imp-date').textContent = `Fonte: ${source}${importedAt ? ' | ' + importedAt.slice(0, 16) : ''}`;
+  el.style.display = 'block';
+}
+
+// ── EVOLUCAO ──────────────────────────────────────────────────────────────────
+async function loadEvolution() {
+  try {
+    const data = await fetchJSON('/api/stats/evolution');
+    const panel = document.getElementById('evo-panel');
+    const chart = document.getElementById('evo-chart');
+    if (!data.length) { panel.style.display = 'none'; return; }
+
+    const maxApl = Math.max(...data.map(d => d.aplicadas), 1);
+    chart.innerHTML = data.map(d => {
+      const h = Math.round(d.aplicadas / maxApl * 80);
+      const ph = d.aplicadas > 0 ? Math.round(d.positivas / d.aplicadas * 80) : 0;
+      return `
+        <div class="evo-col" title="${esc(d.semana)}: ${d.aplicadas} aplicadas, ${d.positivas} positivas">
+          <div class="evo-bar-wrap" style="height:80px;display:flex;align-items:flex-end;gap:1px">
+            <div class="evo-bar" style="height:${h}px;background:var(--accent);width:14px;border-radius:2px 2px 0 0"></div>
+            <div class="evo-bar-pos" style="height:${ph}px;background:var(--green);width:8px;border-radius:2px 2px 0 0"></div>
+          </div>
+          <div class="evo-label" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">${esc((d.semana || '').slice(5))}</div>
+        </div>`;
+    }).join('');
+    panel.style.display = 'block';
+  } catch (e) { console.error('loadEvolution:', e); }
 }
 
 // ── ACOES ─────────────────────────────────────────────────────────────────────
@@ -583,6 +810,8 @@ async function openHistorico(id) {
 function closeModal() {
   document.getElementById('modal-hist').classList.remove('show');
   document.getElementById('modal-feedback').classList.remove('show');
+  document.getElementById('modal-assist').classList.remove('show');
+  _assistJobId = null;
 }
 
 // ── MODAL FEEDBACK ────────────────────────────────────────────────────────────
@@ -620,6 +849,7 @@ async function refreshAll() {
     loadVagas(),
     loadCandidaturas(),
     loadPerfil(),
+    loadEvolution(),
   ]);
 }
 
@@ -635,6 +865,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === e.currentTarget) closeModal();
   });
   document.getElementById('modal-feedback').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+  document.getElementById('modal-assist').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeModal();
   });
 

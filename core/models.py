@@ -44,6 +44,22 @@ class Vaga(Base):
     data_update      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_check       = Column(DateTime, nullable=True)
     notas            = Column(Text)
+    favorited        = Column(Boolean, default=False)
+    ignored          = Column(Boolean, default=False)
+    score_matched_kws = Column(Text)
+    score_missing_kws = Column(Text)
+
+
+class UserProfile(Base):
+    """Perfil do usuário importado do LinkedIn ou inserido manualmente."""
+    __tablename__ = "user_profiles"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    source      = Column(String(50))
+    linkedin_url = Column(String(500))
+    data_json   = Column(Text)
+    imported_at = Column(DateTime, default=datetime.utcnow)
+    is_active   = Column(Boolean, default=True)
 
 
 class StatusHistory(Base):
@@ -146,9 +162,21 @@ def run_migrations():
     _safe_add_column(cur, "vagas", "score_method", "TEXT DEFAULT 'keyword'", colunas_vagas)
     _safe_add_column(cur, "vagas", "score_grade", "TEXT", colunas_vagas)
     _safe_add_column(cur, "vagas", "score_analysis", "TEXT", colunas_vagas)
+    _safe_add_column(cur, "vagas", "favorited", "BOOLEAN DEFAULT 0", colunas_vagas)
+    _safe_add_column(cur, "vagas", "ignored", "BOOLEAN DEFAULT 0", colunas_vagas)
+    _safe_add_column(cur, "vagas", "score_matched_kws", "TEXT", colunas_vagas)
+    _safe_add_column(cur, "vagas", "score_missing_kws", "TEXT", colunas_vagas)
 
     # Novas tabelas (via CREATE TABLE IF NOT EXISTS)
     _DDL_NOVAS_TABELAS = [
+        """CREATE TABLE IF NOT EXISTS user_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            linkedin_url TEXT,
+            data_json TEXT,
+            imported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_active BOOLEAN DEFAULT 1
+        )""",
         """CREATE TABLE IF NOT EXISTS cv_exports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER REFERENCES vagas(id),
