@@ -1,12 +1,43 @@
+# Ambiente
+.env
+venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
-.env
-.env.*
-*.db
-*.sqlite3
-venv/
-.venv/
-logs/
-data/
+*.pyd
+.Python
+*.egg-info/
+
+# Dados sensíveis e gerados
+data/*.db
+data/*.db-shm
+data/*.db-wal
+output/*.pdf
+logs/*.log
+logs/*.log.*
+
+# DB na raiz (legado)
+vagas_monitor.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright
+.playwright/
+playwright-report/
+
+# Claude Code
 .claude/
+
+# Manter estrutura de pastas
+!data/.gitkeep
+!logs/.gitkeep
+!output/.gitkeep

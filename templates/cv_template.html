@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11pt;
+      color: #1a1a1a;
+      line-height: 1.55;
+      background: #fff;
+    }
+
+    .header {
+      border-bottom: 2.5px solid #1a3a6e;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .header h1 {
+      font-size: 22pt;
+      color: #1a3a6e;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 3px;
+    }
+    .header .cargo {
+      font-size: 13pt;
+      color: #2c5f8a;
+      font-weight: 600;
+      margin-bottom: 7px;
+    }
+    .header .contato {
+      font-size: 10pt;
+      color: #555;
+    }
+    .header .contato span { margin-right: 16px; }
+
+    h2 {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #1a3a6e;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 1px solid #c5d5e8;
+      padding-bottom: 4px;
+      margin-top: 18px;
+      margin-bottom: 9px;
+    }
+
+    .sobre {
+      text-align: justify;
+      margin-bottom: 4px;
+      color: #222;
+    }
+
+    .skills-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 4px;
+    }
+    .skill-tag {
+      display: inline-block;
+      background: #edf2f9;
+      color: #1a3a6e;
+      padding: 2px 9px;
+      border-radius: 3px;
+      font-size: 9.5pt;
+      border: 1px solid #c5d5e8;
+    }
+    .skill-tag.highlight {
+      background: #1a3a6e;
+      color: #fff;
+      border-color: #1a3a6e;
+      font-weight: 600;
+    }
+
+    .proof-list {
+      padding-left: 18px;
+    }
+    .proof-list li {
+      margin-bottom: 5px;
+      color: #222;
+    }
+
+    .idiomas-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .idioma {
+      font-size: 10.5pt;
+    }
+    .idioma strong {
+      color: #1a3a6e;
+    }
+
+    .section-meta {
+      font-size: 10pt;
+      color: #444;
+      margin-bottom: 4px;
+    }
+
+    .rodape {
+      margin-top: 28px;
+      padding-top: 8px;
+      border-top: 1px solid #ddd;
+      font-size: 9pt;
+      color: #888;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <h1>{{ nome }}</h1>
+  <div class="cargo">{{ cargo_alvo }}</div>
+  <div class="contato">
+    <span>{{ localizacao }}</span>
+    <span>Disponivel para posicoes remotas e hibridas</span>
+  </div>
+</div>
+
+<!-- RESUMO -->
+<h2>Resumo Profissional</h2>
+<div class="sobre">{{ sobre }}</div>
+
+{% if experience_years %}
+<div class="section-meta" style="margin-top:6px">
+  <strong>{{ experience_years }}+ anos</strong> de experiencia em Supply Chain e Comercio Exterior
+</div>
+{% endif %}
+
+<!-- REALIZACOES -->
+{% if proof_points %}
+<h2>Principais Realizacoes</h2>
+<ul class="proof-list">
+  {% for ponto in proof_points %}
+  <li>{{ ponto }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<!-- COMPETENCIAS TECNICAS -->
+<h2>Competencias Tecnicas</h2>
+<div class="skills-grid">
+  {% for skill in skills_hard %}
+  <span class="skill-tag{% if skill in keywords_vaga %} highlight{% endif %}">{{ skill }}</span>
+  {% endfor %}
+</div>
+{% if keywords_vaga %}
+<div class="section-meta" style="margin-top:6px;font-size:9pt;color:#2c5f8a">
+  Competencias destacadas em negrito correspondem aos requisitos desta vaga.
+</div>
+{% endif %}
+
+<!-- COMPETENCIAS COMPORTAMENTAIS -->
+{% if skills_soft %}
+<h2>Competencias Comportamentais</h2>
+<div class="skills-grid">
+  {% for skill in skills_soft %}
+  <span class="skill-tag">{{ skill }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- CERTIFICACOES -->
+{% if certifications %}
+<h2>Certificacoes</h2>
+<div class="skills-grid">
+  {% for cert in certifications %}
+  <span class="skill-tag">{{ cert }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- IDIOMAS -->
+{% if languages %}
+<h2>Idiomas</h2>
+<div class="idiomas-row">
+  {% for lang in languages %}
+  <div class="idioma">{{ lang }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- RODAPE -->
+<div class="rodape">
+  Curriculo gerado em {{ data_geracao }}
+  {% if empresa_alvo %} | Candidatura para {{ empresa_alvo }}{% endif %}
+</div>
+
+</body>
+</html>

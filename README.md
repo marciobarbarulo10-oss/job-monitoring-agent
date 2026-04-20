@@ -1,18 +1,44 @@
-# 🤖 Job Agent — Márcio Beraldo
+# Job Monitoring Agent v2.0
 
-Agente automatizado que monitora candidaturas de emprego e busca novas vagas
-em LinkedIn, Indeed, Gupy e Vagas.com, com scoring de aderência e notificações
-via Telegram.
+Agente automatizado de monitoramento de vagas com scoring semântico via IA,
+geração automática de CV por vaga e inteligência de mercado.
 
 ---
 
-## 🏗️ Estrutura do Projeto
+## Funcionalidades
+
+| Feature | Descrição |
+|---------|-----------|
+| Scraping multi-portal | LinkedIn, Indeed, Gupy, Vagas.com |
+| Score semântico IA | Avaliação A-F via Claude (não apenas keywords) |
+| CV automático | PDF customizado por vaga (score >= 7.0) |
+| Alerta 48h | Notificação especial para vagas publicadas há menos de 48h |
+| Dashboard web | Pipeline visual com filtros, exportação CSV e ações |
+| Inteligência de mercado | Relatório semanal de tendências e keywords |
+| Filtro anti-scam | Detecção automática de vagas suspeitas |
+| Aprendizado | Score calibrado pelo seu histórico de entrevistas |
+| Telegram | Notificações em tempo real no celular |
+| Health check | Endpoint /health para monitoramento externo |
+
+---
+
+## Arquitetura
 
 ```
-job_agent/
+job-monitoring-agent/
 ├── core/
-│   ├── agent.py          # Orquestrador principal
-│   └── models.py         # Banco de dados (SQLite)
+│   ├── agent.py              # Orquestrador principal do pipeline
+│   ├── models.py             # ORM SQLAlchemy + migrações
+│   ├── semantic_scorer.py    # Score via Claude API com cache
+│   ├── cv_generator.py       # Geração de PDF via Playwright
+│   ├── feedback_engine.py    # Registro de outcomes e calibração
+│   ├── market_intelligence.py # Relatório semanal de tendências
+│   ├── opportunity_detector.py # Detecção de vagas < 48h
+│   ├── quality_filter.py     # Filtro anti-scam
+│   ├── pipeline_integrity.py # Dedup + normalização semanal
+│   ├── rate_limiter.py       # Rate limiting por domínio
+│   ├── logger.py             # Logging centralizado com rotação
+│   └── utils.py              # Retry decorator e helpers
 ├── scrapers/
 │   ├── scraper_indeed.py
 │   ├── scraper_linkedin.py
@@ -21,189 +47,178 @@ job_agent/
 ├── notifiers/
 │   └── notifier_telegram.py
 ├── config/
-│   └── profile.py        # Perfil + sistema de score
-├── data/                 # Banco SQLite (auto-criado)
-├── logs/                 # Logs rotativos
-├── scheduler.py          # Agendador de ciclos
-├── cli.py                # Interface de linha de comando
-├── requirements.txt
-└── .env.example
+│   ├── profile.py            # Perfil legado (keyword scoring)
+│   ├── profile.yml           # Perfil v2.0 (scoring semântico)
+│   └── settings.py           # Configuração centralizada
+├── web/
+│   ├── app.py                # Dashboard Flask
+│   ├── templates/index.html
+│   └── static/dashboard.js
+├── templates/
+│   └── cv_template.html
+├── data/                     # Banco SQLite (auto-criado)
+├── logs/                     # Logs rotativos
+├── output/                   # PDFs gerados
+├── scheduler.py              # Agendador de ciclos
+├── cli.py                    # Interface de linha de comando
+├── setup.py                  # Setup inicial
+└── requirements.txt
 ```
 
 ---
 
-## ⚙️ Configuração (Passo a Passo)
+## Instalação
 
-### 1. Clone e instale dependências
+### Pre-requisitos
+- Python 3.10+
+- pip
+
+### Setup em 3 passos
 
 ```bash
-git clone <seu-repo>
-cd job_agent
+# 1. Clone e instale
+git clone https://github.com/marciobarbarulo10-oss/job-monitoring-agent.git
+cd job-monitoring-agent
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou: venv\Scripts\activate  # Windows
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
+playwright install chromium
 
-### 2. Configure o arquivo .env
+# 2. Configure
+python setup.py   # cria pastas e .env inicial
+notepad .env      # preencha suas credenciais
 
-```bash
-cp .env.example .env
-nano .env  # ou abra no editor
-```
-
-Preencha:
-- `TELEGRAM_BOT_TOKEN` — crie um bot com o @BotFather no Telegram
-- `TELEGRAM_CHAT_ID` — envie uma mensagem para o bot e acesse:
-  `https://api.telegram.org/bot<TOKEN>/getUpdates`
-- `MIN_SCORE_TO_NOTIFY` — score mínimo para notificar (recomendo 6.0)
-
-### 3. Inicialize o banco
-
-```bash
-python -c "from core.models import init_db; init_db()"
+# 3. Rode
+python scheduler.py          # agente em background
+python web/app.py            # dashboard (outro terminal)
 ```
 
 ---
 
-## ▶️ Como Rodar
-
-### Modo manual (um ciclo agora)
-```bash
-python cli.py rodar
-```
-
-### Modo automático (ciclos agendados)
-```bash
-python scheduler.py
-# Roda ciclos a cada 6h + resumo diário às 08:00
-```
-
-### Rodar em background (Linux)
-```bash
-nohup python scheduler.py > logs/scheduler.log 2>&1 &
-echo $! > scheduler.pid
-```
-
-### Parar o agente
-```bash
-kill $(cat scheduler.pid)
-```
-
----
-
-## 📟 Comandos CLI
+## Comandos CLI
 
 ```bash
-# Listar vagas com score >= 7
+# Listar vagas
 python cli.py listar --min-score 7.0
+python cli.py listar --status nova --grade A
 
-# Listar apenas vagas novas
-python cli.py listar --status nova
+# Marcar como aplicada
+python cli.py aplicar "https://linkedin.com/jobs/view/123" --notas "Via LinkedIn"
 
-# Marcar vaga como aplicada
-python cli.py aplicar "https://linkedin.com/jobs/view/123" --notas "Enviei pelo LinkedIn"
-
-# Atualizar status manualmente
+# Atualizar status
 python cli.py status 42 entrevista --detalhes "Agendada para 25/04"
 
-# Ver histórico de uma vaga
+# Ver histórico
 python cli.py historico 42
 
-# Ver resumo geral
+# Resumo geral
 python cli.py resumo
+
+# Ciclo manual
+python cli.py rodar
+
+# Gerar CV para uma vaga
+python cli.py cv 42
+
+# Registrar outcome de candidatura
+python cli.py feedback 42 entrevista --notas "Chamada agendada"
+
+# Relatório de mercado
+python cli.py mercado
+
+# Manutenção do pipeline
+python cli.py manutencao
+
+# Calibrar scoring
+python cli.py calibrar --min-samples 5
+
+# Listar CVs gerados
+python cli.py cvs
 ```
 
 ---
 
-## 📊 Sistema de Score (0–10)
+## Dashboard
 
-| Componente            | Peso máx. | Exemplos que pontuam alto               |
-|-----------------------|-----------|-----------------------------------------|
-| Keywords na descrição | 6.0       | importação, ANVISA, I-Broker, desembaraço |
-| Match de título       | 2.5       | "Analista de Importação", "Analista Comex" |
-| Localização           | 1.5       | São Paulo, Remoto, Híbrido              |
+Acesse: http://localhost:5000
 
-Vagas com score < 2.0 são descartadas automaticamente.
-Vagas com score ≥ MIN_SCORE_TO_NOTIFY geram notificação Telegram.
+| Aba | Conteúdo |
+|-----|----------|
+| Pipeline | Funil de candidaturas com filtros e ações |
+| Mercado | Relatório de tendências e keywords |
+| Feedback | Outcomes registrados e calibração |
+| CVs | CVs gerados com download |
+| Configuração | Edição do perfil e teste Telegram |
 
----
-
-## 🛡️ Anti-bot — Como o agente evita bloqueios
-
-| Técnica                  | Implementação                          |
-|--------------------------|----------------------------------------|
-| User-Agent aleatório     | `fake-useragent` rotaciona a cada req  |
-| Delays aleatórios        | `time.sleep(random.uniform(3, 9))`     |
-| Retry com backoff        | `tenacity` — 3 tentativas, espera exp  |
-| Gupy via API pública     | Sem scraping, usa endpoint REST        |
-| LinkedIn endpoint guest  | API pública `/jobs-guest/` sem login   |
-| Sessão persistente       | `requests.Session()` para cookies      |
-
-Para sites com proteção avançada (Cloudflare), use Playwright headless:
-```python
-from playwright.async_api import async_playwright
-# Playwright emula browser real — difícil de detectar
-```
+**Endpoints da API:**
+- `GET /health` — health check com status do banco e integrações
+- `GET /api/stats` — métricas do pipeline
+- `GET /api/jobs` — lista de vagas com filtros e paginação
+- `GET /api/export/csv` — exportação CSV de todas as vagas
+- `POST /api/trigger` — dispara ciclo de busca em background
+- `POST /api/cv/<id>` — gera CV on-demand para uma vaga
 
 ---
 
-## 🔮 Evoluções Futuras
+## Sistema de Score
 
-### v2 — IA para personalização
-```python
-# Usar GPT-4 para pontuar aderência com mais precisão
-# e gerar carta de apresentação personalizada por vaga
-from openai import OpenAI
-client = OpenAI()
-response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{
-        "role": "system",
-        "content": "Analise a aderência desta vaga ao perfil e retorne JSON com score e justificativa."
-    }, {
-        "role": "user", 
-        "content": f"PERFIL: {perfil}\n\nVAGA: {descricao_vaga}"
-    }]
-)
-```
+| Grade | Score | Significado | Ação |
+|-------|-------|-------------|------|
+| A | 9-10 | Fit perfeito | CV gerado automaticamente + alerta prioritário |
+| B | 7-8.9 | Boa aderência | CV gerado automaticamente + notificação Telegram |
+| C | 5-6.9 | Aderência parcial | Notificação Telegram |
+| D | 3-4.9 | Aderência baixa | Salvo sem notificação |
+| F | 0-2.9 | Descartado | Ignorado |
 
-### v3 — Auto-candidatura (Gupy)
-```python
-# Gupy tem fluxo de candidatura via API autenticada
-# Possível automatizar o envio do currículo nas vagas score >= 8
-```
-
-### v4 — Dashboard Web
-```python
-# Flask/FastAPI + SQLite → visualização web das candidaturas
-# Gráficos de funil: vagas encontradas → aplicadas → entrevistas
-```
-
-### v5 — Integração com currículo
-```python
-# Gerar PDF personalizado por vaga usando os 10 currículos já criados
-# Selecionar automaticamente qual currículo usar baseado no tipo de vaga
-```
+O scoring usa Claude API por padrão (análise semântica). Sem ANTHROPIC_API_KEY,
+usa keyword matching do `config/profile.py` como fallback.
 
 ---
 
-## 🔧 Configurações Avançadas (.env)
+## Variaveis de Ambiente
 
-```env
-CHECK_INTERVAL_HOURS=6    # Intervalo entre ciclos (padrão: 6h)
-MIN_SCORE_TO_NOTIFY=6.0   # Score mínimo para notificação
-LOG_LEVEL=INFO             # DEBUG para mais detalhes
-```
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `TELEGRAM_BOT_TOKEN` | — | Token do bot (obrigatório para notificações) |
+| `TELEGRAM_CHAT_ID` | — | Chat ID do destinatário |
+| `ANTHROPIC_API_KEY` | — | Chave da API Anthropic (para score semântico) |
+| `SEMANTIC_MODEL` | `claude-haiku-4-5-20251001` | Modelo para scoring |
+| `ENABLE_SEMANTIC_SCORING` | `true` | Habilita score via Claude |
+| `MIN_SCORE_TO_NOTIFY` | `6.0` | Score mínimo para notificação |
+| `MIN_SCORE_AUTO_CV` | `7.0` | Score mínimo para gerar CV |
+| `CHECK_INTERVAL_HOURS` | `6` | Horas entre ciclos de busca |
+| `FLASK_PORT` | `5000` | Porta do dashboard |
+| `LOG_LEVEL` | `INFO` | Nível de log (DEBUG/INFO/WARNING) |
 
 ---
 
-## ⚠️ Observações Importantes
+## Consideracoes de Uso
 
-1. **LinkedIn** pode bloquear IPs com muitas requisições. Use intervalos ≥ 6h.
-2. **Gupy** usa API pública — mais estável que scraping.
-3. **Vagas.com** muda estrutura HTML com frequência — verifique os seletores.
-4. Para produção contínua, considere rodar em VPS (DigitalOcean $6/mês) ou
-   Google Cloud Run (free tier).
-5. O banco SQLite é suficiente para uso pessoal. Para múltiplos usuários,
-   migre para PostgreSQL (troque a connection string em `models.py`).
+1. **LinkedIn** pode bloquear IPs com muitas requisições. Use intervalos de 6h+.
+2. **Gupy** usa API pública REST — mais estável que scraping HTML.
+3. O rate limiter em `core/rate_limiter.py` aplica delays automáticos por domínio.
+4. O banco SQLite é suficiente para uso pessoal. Para múltiplos usuários, troque
+   a connection string em `models.py` por PostgreSQL.
+5. CVs gerados ficam em `output/` e não são versionados no git.
+
+---
+
+## Changelog
+
+### v2.0 (atual)
+- Score semântico via Claude API com grade A-F
+- Geração automática de CV em PDF por vaga (score >= 7.0)
+- Detecção de janela de oportunidade (publicadas < 48h)
+- Sistema de feedback e calibração de score por histórico
+- Filtro anti-scam com QualityFilter
+- Relatório semanal de tendências de mercado
+- Dashboard expandido com exportação CSV e health check
+- Configuração centralizada em config/settings.py
+- Rate limiting inteligente por domínio nos scrapers
+- Logging padronizado com rotação de arquivos
+- setup.py para onboarding em 3 passos
+
+### v1.0
+- Versão inicial com keyword matching
+- Notificações Telegram básicas
+- CLI e scheduler com APScheduler

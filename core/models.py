@@ -2,13 +2,16 @@
 models.py — Definição do banco de dados (SQLite via SQLAlchemy)
 """
 import os
+import sqlite3
+import logging
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
 Base = declarative_base()
 
-# Caminho absoluto para o banco — funciona independente de onde o script é chamado
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DB_PATH = os.path.join(_BASE_DIR, "data", "job_agent.db")
 os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
@@ -18,25 +21,29 @@ class Vaga(Base):
     """Representa uma vaga encontrada ou aplicada."""
     __tablename__ = "vagas"
 
-    id              = Column(Integer, primary_key=True, autoincrement=True)
-    titulo          = Column(String(300), nullable=False)
-    empresa         = Column(String(200))
-    localizacao     = Column(String(200))
-    modalidade      = Column(String(50))
-    fonte           = Column(String(50))
-    url             = Column(String(500), unique=True)
-    descricao       = Column(Text)
-    palavras_chave  = Column(Text)
-    score           = Column(Float, default=0.0)
-    status          = Column(String(50), default="nova")
-    # nova | aplicada | em_analise | entrevista | rejeitada | encerrada
-    aplicada        = Column(Boolean, default=False)
-    data_encontrada = Column(DateTime, default=datetime.utcnow)
-    data_aplicacao  = Column(DateTime, nullable=True)
-    data_update     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    last_check      = Column(DateTime, nullable=True)
-    notificada      = Column(Boolean, default=False)
-    notas           = Column(Text)
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    titulo           = Column(String(300), nullable=False)
+    empresa          = Column(String(200))
+    localizacao      = Column(String(200))
+    modalidade       = Column(String(50))
+    fonte            = Column(String(50))
+    url              = Column(String(500), unique=True)
+    descricao        = Column(Text)
+    palavras_chave   = Column(Text)
+    score            = Column(Float, default=0.0)
+    score_method     = Column(String(20), default="keyword")
+    score_grade      = Column(String(2))
+    score_analysis   = Column(Text)
+    status           = Column(String(50), default="nova")
+    aplicada         = Column(Boolean, default=False)
+    notificada       = Column(Boolean, default=False)
+    is_early_applicant = Column(Boolean, default=False)
+    posted_at        = Column(DateTime, nullable=True)
+    data_encontrada  = Column(DateTime, default=datetime.utcnow)
+    data_aplicacao   = Column(DateTime, nullable=True)
+    data_update      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_check       = Column(DateTime, nullable=True)
+    notas            = Column(Text)
 
 
 class StatusHistory(Base):
@@ -51,6 +58,68 @@ class StatusHistory(Base):
     detalhes   = Column(Text)
 
 
+class CVExport(Base):
+    """Registro de CVs gerados por vaga."""
+    __tablename__ = "cv_exports"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    job_id     = Column(Integer)
+    file_path  = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FeedbackOutcome(Base):
+    """Outcomes registrados pelo usuário (entrevista, rejeição, etc.)."""
+    __tablename__ = "feedback_outcomes"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    job_id       = Column(Integer)
+    outcome      = Column(String(30))
+    outcome_date = Column(DateTime, default=datetime.utcnow)
+    notes        = Column(Text)
+
+
+class OpportunityAlert(Base):
+    """Alertas de janela de oportunidade (vagas < 48h)."""
+    __tablename__ = "opportunity_alerts"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    job_id      = Column(Integer)
+    detected_at = Column(DateTime, default=datetime.utcnow)
+    notified_at = Column(DateTime, nullable=True)
+
+
+class MarketReport(Base):
+    """Relatórios semanais de inteligência de mercado."""
+    __tablename__ = "market_reports"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    week        = Column(String(20), unique=True)
+    report_json = Column(Text)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+
+class QualityFlag(Base):
+    """Flags de qualidade em vagas suspeitas."""
+    __tablename__ = "quality_flags"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    job_id     = Column(Integer)
+    flags_json = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ScoreCalibration(Base):
+    """Pesos calibrados pelo FeedbackEngine."""
+    __tablename__ = "score_calibration"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    feature     = Column(String(100), unique=True)
+    weight      = Column(Float)
+    updated_at  = Column(DateTime, default=datetime.utcnow)
+    sample_size = Column(Integer)
+
+
 # ── Engine & Session ──────────────────────────────────────────────────────────
 engine  = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
 Session = sessionmaker(bind=engine)
@@ -58,18 +127,82 @@ Session = sessionmaker(bind=engine)
 
 def init_db():
     Base.metadata.create_all(engine)
-    _migrate_schema()
-    print(f"[INFO] Banco de dados inicializado: {_DB_PATH}")
+    run_migrations()
+    logger.info(f"Banco inicializado: {_DB_PATH}")
 
 
-def _migrate_schema():
-    """Aplica migrações incrementais sem perder dados existentes."""
-    import sqlite3
+def run_migrations():
+    """Executa migrações incrementais seguras na inicialização."""
     conn = sqlite3.connect(_DB_PATH)
     cur = conn.cursor()
+
+    # Colunas novas na tabela vagas
     cur.execute("PRAGMA table_info(vagas)")
-    existing = {row[1] for row in cur.fetchall()}
-    if "last_check" not in existing:
-        cur.execute("ALTER TABLE vagas ADD COLUMN last_check DATETIME")
-        conn.commit()
+    colunas_vagas = {row[1] for row in cur.fetchall()}
+
+    _safe_add_column(cur, "vagas", "last_check", "DATETIME", colunas_vagas)
+    _safe_add_column(cur, "vagas", "posted_at", "DATETIME", colunas_vagas)
+    _safe_add_column(cur, "vagas", "is_early_applicant", "BOOLEAN DEFAULT 0", colunas_vagas)
+    _safe_add_column(cur, "vagas", "score_method", "TEXT DEFAULT 'keyword'", colunas_vagas)
+    _safe_add_column(cur, "vagas", "score_grade", "TEXT", colunas_vagas)
+    _safe_add_column(cur, "vagas", "score_analysis", "TEXT", colunas_vagas)
+
+    # Novas tabelas (via CREATE TABLE IF NOT EXISTS)
+    _DDL_NOVAS_TABELAS = [
+        """CREATE TABLE IF NOT EXISTS cv_exports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER REFERENCES vagas(id),
+            file_path TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS feedback_outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER REFERENCES vagas(id),
+            outcome TEXT CHECK(outcome IN ('entrevista','rejeicao','sem_resposta','proposta')),
+            outcome_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            notes TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS opportunity_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER REFERENCES vagas(id),
+            detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            notified_at DATETIME
+        )""",
+        """CREATE TABLE IF NOT EXISTS market_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week TEXT UNIQUE,
+            report_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS quality_flags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER REFERENCES vagas(id),
+            flags_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS score_calibration (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            feature TEXT UNIQUE,
+            weight REAL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            sample_size INTEGER
+        )""",
+    ]
+
+    for ddl in _DDL_NOVAS_TABELAS:
+        try:
+            cur.execute(ddl)
+        except Exception as e:
+            logger.warning(f"Migration DDL ignorada: {e}")
+
+    conn.commit()
     conn.close()
+
+
+def _safe_add_column(cur, tabela: str, coluna: str, tipo: str, existentes: set):
+    """Adiciona coluna apenas se não existir (SQLite não suporta IF NOT EXISTS em ALTER)."""
+    if coluna not in existentes:
+        try:
+            cur.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
+        except Exception as e:
+            logger.warning(f"Nao foi possivel adicionar coluna {coluna}: {e}")

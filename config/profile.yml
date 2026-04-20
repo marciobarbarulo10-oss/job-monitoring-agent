@@ -1,0 +1,99 @@
+name: "Márcio Beraldo"
+current_role: "Analista de Importação"
+target_roles:
+  - "Analista de Importação Pleno"
+  - "Analista Supply Chain"
+  - "Analista de Comex"
+  - "Analista de Comércio Exterior"
+  - "Analista Aduaneiro"
+  - "Analista de Logística Internacional"
+  - "Analista de Operações Supply Chain"
+  - "Analista de Desembaraço Aduaneiro"
+
+skills:
+  hard:
+    - importação
+    - desembaraço aduaneiro
+    - ANVISA
+    - supply chain
+    - comércio exterior
+    - COMEX
+    - logística internacional
+    - SISCOMEX
+    - Licença de Importação (LI)
+    - Declaração de Importação (DI)
+    - Incoterms
+    - NCM
+    - cold chain
+    - GLP
+    - Excel avançado
+    - Python
+    - automação
+    - freight forwarder
+    - despacho aduaneiro
+    - compliance regulatório
+    - farmacêutico
+    - rastreamento de cargas
+    - KPI
+    - Receita Federal
+    - BL/AWB
+  soft:
+    - análise crítica
+    - resolução de problemas
+    - comunicação assertiva
+    - trabalho em equipe
+    - organização
+    - proatividade
+    - atenção a detalhes
+    - gestão de prioridades
+  certifications: []
+
+location:
+  preferred:
+    - São Paulo
+    - SP
+    - Grande São Paulo
+  remote: true
+  hybrid: true
+
+experience_years: 5
+
+salary:
+  min: 5000
+  currency: "BRL"
+
+languages:
+  - "Português (nativo)"
+  - "Inglês (intermediário)"
+  - "Espanhol (básico)"
+
+about: |
+  Profissional de Supply Chain e Comércio Exterior com mais de 5 anos de experiência em
+  importação, desembaraço aduaneiro e logística internacional. Histórico comprovado em
+  operações com ANVISA, cold chain farmacêutica, SISCOMEX e gestão de fornecedores
+  internacionais. Experiência com automação de processos via Python e Excel avançado,
+  reduzindo tempo de ciclo e erros operacionais. Busco posição de Analista Pleno em
+  empresa com operações de importação ativas, especialmente no setor farmacêutico ou
+  de alta complexidade regulatória.
+
+proof_points:
+  - "Redução de 20% no tempo de desembaraço aduaneiro através de automação com Python"
+  - "Gestão de importações de cold chain farmacêutica com 100% de conformidade GLP"
+  - "Implementação de controle de LI/DI via Excel avançado, eliminando erros manuais"
+  - "Coordenação de mais de 200 processos de importação anuais sem divergências"
+  - "Desenvolvimento de dashboard de KPIs logísticos adotado por toda a equipe"
+
+what_to_avoid:
+  - desenvolvedor
+  - developer
+  - engenheiro de software
+  - cientista de dados
+  - motorista
+  - auxiliar de limpeza
+  - assistente administrativo
+  - vendedor
+  - representante comercial
+  - multinível
+  - comissão pura
+  - segurança
+  - atendente
