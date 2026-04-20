@@ -37,6 +37,223 @@ def _fmt(val):
         return str(val)
 
 
+# ── HELPERS LOCAIS (sem API externa) ─────────────────────────────────────────
+
+def _profile_local() -> dict:
+    """Carrega config/profile.yml. Sem API, sem fallback externo."""
+    try:
+        import yaml
+        path = os.path.join(_BASE_DIR, "config", "profile.yml")
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def _normalize_kw(text: str) -> str:
+    import unicodedata
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+def _match_local(vaga: dict, profile: dict) -> dict:
+    """Keyword matching 100% local — sem chamada de API."""
+    hard = profile.get("skills", {}).get("hard", [])
+    texto = _normalize_kw(
+        f"{vaga.get('titulo') or ''} {vaga.get('descricao') or ''}"
+    )
+    matched, missing = [], []
+    for skill in hard:
+        (matched if _normalize_kw(skill) in texto else missing).append(skill)
+
+    total = len(hard)
+    pct   = round(len(matched) / total * 100) if total else 0
+
+    if pct >= 60:
+        analysis = f"Boa aderencia: {len(matched)}/{total} competencias encontradas na vaga."
+        rec = "aplicar"
+    elif pct >= 30:
+        analysis = f"Aderencia parcial: {len(matched)}/{total} competencias mapeadas."
+        rec = "aplicar_com_ressalvas"
+    else:
+        analysis = f"Baixa aderencia: apenas {len(matched)}/{total} competencias identificadas."
+        rec = "avaliar"
+
+    return {
+        "matched": matched[:8], "missing": missing[:5],
+        "match_pct": pct, "analysis": analysis,
+        "recommendation": rec, "method": "keyword",
+    }
+
+
+def _platform_tip(fonte: str) -> dict:
+    fonte = (fonte or "").lower().replace(".com", "").strip()
+    tips = {
+        "linkedin": {
+            "tip": "Use o botao Easy Apply. Leva menos de 2 minutos.",
+            "steps": [
+                "1. Abra a vaga no LinkedIn pelo botao 'Abrir Vaga'",
+                "2. Clique em 'Candidatura Simplificada' (botao azul)",
+                "3. Preencha os campos e confirme",
+                "4. Volte e clique em 'Confirmar Candidatura'",
+            ],
+        },
+        "gupy": {
+            "tip": "O processo tem etapas. Separe 10 minutos e salve o progresso.",
+            "steps": [
+                "1. Abra a vaga no Gupy pelo botao 'Abrir Vaga'",
+                "2. Faca login ou cadastre-se (gratuito)",
+                "3. Clique em 'Candidatar-se'",
+                "4. Use os dados abaixo para preencher os campos",
+                "5. Volte e clique em 'Confirmar Candidatura'",
+            ],
+        },
+        "indeed": {
+            "tip": "Voce sera redirecionado para o site da empresa.",
+            "steps": [
+                "1. Abra a vaga no Indeed pelo botao 'Abrir Vaga'",
+                "2. Clique em 'Candidate-se agora'",
+                "3. Preencha o formulario da empresa",
+                "4. Volte e clique em 'Confirmar Candidatura'",
+            ],
+        },
+        "vagas": {
+            "tip": "Cadastre seu curriculo no site antes de aplicar.",
+            "steps": [
+                "1. Abra a vaga em Vagas.com pelo botao 'Abrir Vaga'",
+                "2. Cadastre-se ou faca login (gratuito)",
+                "3. Clique em 'Candidatar'",
+                "4. Volte e clique em 'Confirmar Candidatura'",
+            ],
+        },
+    }
+    return tips.get(fonte, {
+        "tip": "Acesse o link e siga as instrucoes da empresa.",
+        "steps": [
+            "1. Abra a vaga pelo botao 'Abrir Vaga'",
+            "2. Siga as instrucoes da empresa no portal",
+            "3. Volte e clique em 'Confirmar Candidatura'",
+        ],
+    })
+
+
+def _template_answers(vaga: dict, profile: dict, matched: list) -> list:
+    """Gera respostas por template Python — sem API, retorna lista de {pergunta, resposta}."""
+    exp_anos  = profile.get("experience_years", 5)
+    empresa   = vaga.get("empresa") or "empresa"
+    titulo    = vaga.get("titulo") or "Analista"
+    nivel     = "Pleno" if exp_anos >= 3 else "Junior"
+    skills_str = ", ".join(matched[:4]) if matched else "Supply Chain e Comercio Exterior"
+    about     = (profile.get("about") or "").strip()
+    proof     = profile.get("proof_points", [])
+    proof_str = proof[0] if proof else "melhoria continua de processos e resultados"
+    cargo_base = titulo.split()[0] if titulo else "Analista"
+
+    return [
+        {
+            "pergunta": "Por que voce quer essa vaga?",
+            "resposta": (
+                f"Tenho {exp_anos} anos de experiencia em {skills_str} e esta vaga em "
+                f"{empresa} se alinha diretamente com minha trajetoria. Vejo uma "
+                f"oportunidade concreta de contribuir com a posicao de {titulo}."
+            ),
+        },
+        {
+            "pergunta": "Qual seu maior diferencial?",
+            "resposta": (
+                f"Minha experiencia pratica em {skills_str} combinada com resultados "
+                f"mensuraveis: {proof_str}."
+            ),
+        },
+        {
+            "pergunta": "Onde se ve em 5 anos?",
+            "resposta": (
+                f"Vejo-me como referencia tecnica em {cargo_base} {nivel}, liderando "
+                f"projetos de melhoria e com responsabilidades crescentes na area."
+            ),
+        },
+        {
+            "pergunta": "Qual sua pretensao salarial?",
+            "resposta": (
+                f"Estou aberto a discutir uma remuneracao compativel com o mercado para "
+                f"{nivel} com {exp_anos} anos de experiencia na area."
+            ),
+        },
+        {
+            "pergunta": "Conte sobre voce",
+            "resposta": about[:500] if about else (
+                f"Profissional com {exp_anos} anos de experiencia em {skills_str}, "
+                f"focado em resultados e melhoria de processos."
+            ),
+        },
+    ]
+
+
+def _process_manual_profile(manual_data: dict, linkedin_url: str = "") -> dict:
+    skills_raw = manual_data.get("skills", "")
+    if isinstance(skills_raw, str):
+        hard = [s.strip() for s in skills_raw.replace("\n", ",").split(",") if s.strip()]
+    else:
+        hard = list(skills_raw) if skills_raw else []
+    loc = manual_data.get("location", "")
+    return {
+        "name": manual_data.get("name", ""),
+        "headline": manual_data.get("headline", ""),
+        "current_role": manual_data.get("headline", ""),
+        "location": {"preferred": [loc] if loc else []},
+        "experience_years": int(manual_data.get("exp_years") or 0),
+        "skills": {"hard": hard, "soft": []},
+        "about": manual_data.get("about", ""),
+        "linkedin_url": linkedin_url,
+        "method": "manual",
+    }
+
+
+def _save_profile_to_yml(extracted: dict) -> bool:
+    try:
+        import yaml
+        path = os.path.join(_BASE_DIR, "config", "profile.yml")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                current = yaml.safe_load(f) or {}
+        except Exception:
+            current = {}
+        if extracted.get("name"):
+            current["name"] = extracted["name"]
+        if extracted.get("headline") or extracted.get("current_role"):
+            current["current_role"] = extracted.get("headline") or extracted.get("current_role")
+        if extracted.get("experience_years"):
+            current["experience_years"] = extracted["experience_years"]
+        if extracted.get("about"):
+            current["about"] = extracted["about"]
+        hard = extracted.get("skills", {}).get("hard", [])
+        if hard:
+            current.setdefault("skills", {})["hard"] = hard
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(current, f, allow_unicode=True, default_flow_style=False)
+        return True
+    except Exception:
+        return False
+
+
+def _save_profile_to_db(extracted: dict, linkedin_url: str, source: str):
+    conn = _db()
+    try:
+        conn.execute("UPDATE user_profiles SET is_active=0")
+        conn.execute(
+            "INSERT INTO user_profiles (source, linkedin_url, data_json, imported_at, is_active) "
+            "VALUES (?, ?, ?, ?, 1)",
+            (source, linkedin_url,
+             json.dumps(extracted, ensure_ascii=False),
+             datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
 # ── ROTA PRINCIPAL ─────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -558,48 +775,108 @@ def api_perfil():
 
 @app.route("/api/profile/linkedin", methods=["POST"])
 def api_import_linkedin():
-    """Extrai perfil do LinkedIn via Playwright e salva em config/profile.yml."""
-    data = request.get_json() or {}
+    """Scraping publico com requests+BS4. Sem Playwright. Retorna blocked=true se LinkedIn bloquear."""
+    data         = request.get_json() or {}
     linkedin_url = data.get("url", "").strip()
-    manual_data = data.get("manual")
+    manual_data  = data.get("manual")
 
+    # ── Entrada manual ────────────────────────────────────────────────────────
+    if manual_data:
+        extracted = _process_manual_profile(manual_data, linkedin_url)
+        saved = _save_profile_to_yml(extracted)
+        _save_profile_to_db(extracted, linkedin_url, "manual")
+        return jsonify({
+            "ok": saved,
+            "profile": extracted,
+            "message": "Perfil salvo com sucesso!" if saved else "Falha ao salvar",
+        })
+
+    if not linkedin_url:
+        return jsonify({"ok": False, "error": "url_or_manual_required"}), 400
+
+    # ── Scraping publico (sem login) ──────────────────────────────────────────
     try:
-        from core.linkedin_extractor import LinkedInExtractor
-        ex = LinkedInExtractor()
+        import requests as req
+        from bs4 import BeautifulSoup
 
-        if manual_data:
-            extracted = ex.from_manual({**manual_data, "linkedin_url": linkedin_url})
-        elif linkedin_url:
-            extracted = ex.extract(linkedin_url)
-            if extracted.get("error"):
-                return jsonify({"ok": False, "error": extracted["error"],
-                                "message": extracted.get("message", ""),
-                                "fallback": "manual"}), 200
-        else:
-            return jsonify({"ok": False, "error": "url_or_manual_required"}), 400
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        }
+        resp = req.get(linkedin_url, headers=headers, timeout=10, allow_redirects=True)
 
-        saved = ex.save_to_yml(extracted)
+        blocked = (
+            resp.status_code == 999
+            or resp.status_code != 200
+            or "authwall" in resp.url
+            or "/login" in resp.url
+            or "checkpoint" in resp.url
+        )
+        if blocked:
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "message": (
+                    "LinkedIn bloqueou o acesso automatico. "
+                    "Use a entrada manual abaixo."
+                ),
+            })
 
-        # Persiste no banco
-        conn = _db()
-        try:
-            conn.execute("UPDATE user_profiles SET is_active=0")
-            conn.execute(
-                "INSERT INTO user_profiles (source, linkedin_url, data_json, imported_at, is_active) "
-                "VALUES (?, ?, ?, ?, 1)",
-                (extracted.get("method", "manual"), linkedin_url,
-                 json.dumps(extracted, ensure_ascii=False),
-                 datetime.utcnow().isoformat()),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        soup  = BeautifulSoup(resp.text, "html.parser")
+        name, headline, about = "", "", ""
 
-        return jsonify({"ok": saved, "profile": extracted,
-                        "message": "Perfil importado e salvo com sucesso!" if saved else "Falha ao salvar"})
+        og_title = soup.find("meta", property="og:title")
+        if og_title:
+            raw = (og_title.get("content") or "").strip()
+            if " - " in raw:
+                parts    = raw.split(" - ", 1)
+                name     = parts[0].strip()
+                headline = parts[1].strip()
+            else:
+                name = raw
+
+        if not name:
+            title_tag = soup.find("title")
+            if title_tag:
+                name = title_tag.text.replace("| LinkedIn", "").strip()
+
+        og_desc = soup.find("meta", property="og:description")
+        if og_desc:
+            about = (og_desc.get("content") or "").strip()
+
+        if not name:
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "message": (
+                    "Nao foi possivel extrair dados publicos do perfil. "
+                    "Use a entrada manual abaixo."
+                ),
+            })
+
+        extracted = {
+            "name": name, "headline": headline, "about": about,
+            "skills": {"hard": [], "soft": []},
+            "linkedin_url": linkedin_url, "method": "public_scrape",
+        }
+        saved = _save_profile_to_yml(extracted)
+        _save_profile_to_db(extracted, linkedin_url, "public_scrape")
+        return jsonify({
+            "ok": saved,
+            "profile": extracted,
+            "message": "Perfil extraido! Revise e complete os dados manualmente.",
+        })
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({
+            "ok": False,
+            "blocked": True,
+            "message": f"Erro ao acessar LinkedIn: {e}. Use a entrada manual abaixo.",
+        })
 
 
 @app.route("/api/profile/linkedin")
@@ -673,7 +950,7 @@ def api_apply_assisted(job_id):
 
 @app.route("/api/assist/<int:job_id>")
 def api_get_assist(job_id):
-    """Retorna conteúdo de assistência para a vaga (sem marcar como aplicada)."""
+    """Conteudo de assistencia 100% local — sem API externa, sem Playwright."""
     conn = _db()
     try:
         vaga = conn.execute("SELECT * FROM vagas WHERE id=?", (job_id,)).fetchone()
@@ -683,18 +960,34 @@ def api_get_assist(job_id):
     finally:
         conn.close()
 
-    try:
-        from core.application_engine import ApplicationEngine
-        engine = ApplicationEngine()
-        assist = engine.get_assist_content(vaga_dict)
+    profile     = _profile_local()
+    explanation = _match_local(vaga_dict, profile)
+    platform    = _platform_tip(vaga_dict.get("fonte", ""))
+    respostas   = _template_answers(vaga_dict, profile, explanation["matched"])
 
-        from core.score_explainer import ScoreExplainer
-        explainer = ScoreExplainer()
-        explanation = explainer.explain(vaga_dict)
+    hard    = profile.get("skills", {}).get("hard", [])
+    matched = explanation["matched"]
+    relevant = matched[:6] or hard[:6]
+    about   = (profile.get("about") or "").strip()
 
-        return jsonify({"ok": True, "assist": assist, "explanation": explanation})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    prefill_fields = [
+        {"label": "Nome completo",        "value": profile.get("name", ""),                         "type": "text"},
+        {"label": "Cargo pretendido",     "value": vaga_dict.get("titulo", profile.get("current_role", "")), "type": "text"},
+        {"label": "Competencias relevantes", "value": ", ".join(relevant),                          "type": "text"},
+        {"label": "Anos de experiencia",  "value": str(profile.get("experience_years", "")),        "type": "text"},
+        {"label": "Idiomas",              "value": ", ".join(profile.get("languages", [])),         "type": "text"},
+        {"label": "Resumo / Sobre voce",  "value": about[:400],                                     "type": "textarea"},
+    ]
+
+    assist = {
+        "platform":        (vaga_dict.get("fonte") or "").lower(),
+        "tip":             platform["tip"],
+        "steps":           platform["steps"],
+        "prefill_fields":  prefill_fields,
+        "respostas_comuns": respostas,
+    }
+
+    return jsonify({"ok": True, "assist": assist, "explanation": explanation})
 
 
 # ── AÇÕES RÁPIDAS ──────────────────────────────────────────────────────────────

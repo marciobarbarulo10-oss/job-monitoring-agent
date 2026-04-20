@@ -653,6 +653,9 @@ async function importarLinkedIn() {
     if (r.ok) {
       showToast(r.message || 'Perfil importado!');
       _renderImportedProfile(r.profile, r.source || 'linkedin', r.imported_at || '');
+    } else if (r.blocked) {
+      showToast(r.message || 'LinkedIn bloqueou acesso automatico. Use entrada manual.', true);
+      document.getElementById('li-manual-form').classList.add('show');
     } else {
       showToast(r.error || 'Falha ao importar perfil', true);
     }
