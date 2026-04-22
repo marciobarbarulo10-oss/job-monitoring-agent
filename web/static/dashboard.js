@@ -463,6 +463,30 @@ async function loadConfig() {
       _renderImportedProfile(li.profile, li.source || '', li.imported_at || '');
     }
   } catch (_) { /* sem perfil importado ainda */ }
+
+  loadSchedulerStatus();
+}
+
+async function loadSchedulerStatus() {
+  const el = document.getElementById('scheduler-jobs-list');
+  if (!el) return;
+  try {
+    const d = await fetchJSON('/api/scheduler/status');
+    el.innerHTML = d.jobs.map(j => `
+      <div style="background:var(--bg2);border-radius:6px;padding:10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--fg)">${esc(j.nome)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(j.descricao)}</div>
+          <div style="font-size:11px;color:var(--accent);margin-top:4px">${esc(j.frequencia)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:10px;color:var(--muted)">Proxima execucao</div>
+          <div style="font-size:12px;font-weight:600;color:var(--fg);white-space:nowrap">${esc(j.proxima_execucao)}</div>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px">Nao foi possivel carregar rotinas agendadas.</div>';
+  }
 }
 
 async function saveProfile() {
@@ -654,8 +678,17 @@ async function importarLinkedIn() {
       showToast(r.message || 'Perfil importado!');
       _renderImportedProfile(r.profile, r.source || 'linkedin', r.imported_at || '');
     } else if (r.blocked) {
-      showToast(r.message || 'LinkedIn bloqueou acesso automatico. Use entrada manual.', true);
-      document.getElementById('li-manual-form').classList.add('show');
+      showToast(r.sugestao || 'Use a Entrada Manual abaixo', true);
+      const form = document.getElementById('li-manual-form');
+      form.classList.add('show');
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const urlVal = (document.getElementById('li-url-input').value || '').trim();
+      const slug = urlVal.replace(/\/+$/, '').split('/').pop() || '';
+      if (slug) {
+        const prefill = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const headlineEl = document.getElementById('li-headline');
+        if (!headlineEl.value) headlineEl.value = prefill;
+      }
     } else {
       showToast(r.error || 'Falha ao importar perfil', true);
     }

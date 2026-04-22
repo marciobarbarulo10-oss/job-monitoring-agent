@@ -51,9 +51,12 @@ def _profile_local() -> dict:
 
 
 def _normalize_kw(text: str) -> str:
+    if not text:
+        return ""
     import unicodedata
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+    normalized = unicodedata.normalize('NFD', text)
+    ascii_text = normalized.encode('ascii', 'ignore').decode('ascii')
+    return ascii_text.lower().strip()
 
 
 def _match_local(vaga: dict, profile: dict) -> dict:
@@ -820,10 +823,8 @@ def api_import_linkedin():
             return jsonify({
                 "ok": False,
                 "blocked": True,
-                "message": (
-                    "LinkedIn bloqueou o acesso automatico. "
-                    "Use a entrada manual abaixo."
-                ),
+                "message": "LinkedIn requer login para extracao automatica.",
+                "sugestao": "Use a Entrada Manual — leva 2 minutos e funciona sempre.",
             })
 
         soup  = BeautifulSoup(resp.text, "html.parser")
@@ -852,10 +853,8 @@ def api_import_linkedin():
             return jsonify({
                 "ok": False,
                 "blocked": True,
-                "message": (
-                    "Nao foi possivel extrair dados publicos do perfil. "
-                    "Use a entrada manual abaixo."
-                ),
+                "message": "Nao foi possivel extrair dados publicos do perfil.",
+                "sugestao": "Use a Entrada Manual — leva 2 minutos e funciona sempre.",
             })
 
         extracted = {
@@ -875,7 +874,8 @@ def api_import_linkedin():
         return jsonify({
             "ok": False,
             "blocked": True,
-            "message": f"Erro ao acessar LinkedIn: {e}. Use a entrada manual abaixo.",
+            "message": f"Erro ao acessar LinkedIn: {e}.",
+            "sugestao": "Use a Entrada Manual — leva 2 minutos e funciona sempre.",
         })
 
 
@@ -1102,6 +1102,79 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=pipeline.csv"},
     )
+
+
+# ── SCHEDULER STATUS ──────────────────────────────────────────────────────────
+
+@app.route("/api/scheduler/status")
+def api_scheduler_status():
+    """Retorna configuracao dos jobs agendados e proximas execucoes estimadas."""
+    from datetime import timedelta
+
+    interval_hours = int(os.getenv("CHECK_INTERVAL_HOURS", 6))
+    now = datetime.now()
+
+    def next_interval(hours):
+        return (now + timedelta(hours=hours)).strftime("%d/%m/%Y %H:%M")
+
+    def next_cron(hour, minute, day_of_week=None):
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if day_of_week is None:
+            if target <= now:
+                target += timedelta(days=1)
+        else:
+            days_map = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+            target_dow = days_map[day_of_week]
+            days_ahead = target_dow - now.weekday()
+            if days_ahead < 0 or (days_ahead == 0 and target <= now):
+                days_ahead += 7
+            target = target + timedelta(days=days_ahead)
+        return target.strftime("%d/%m/%Y %H:%M")
+
+    jobs = [
+        {
+            "id": "busca_vagas",
+            "nome": "Busca de Vagas",
+            "descricao": "Ciclo principal: busca, pontuacao e notificacao de novas vagas",
+            "frequencia": f"A cada {interval_hours}h",
+            "proxima_execucao": next_interval(interval_hours),
+        },
+        {
+            "id": "resumo_diario",
+            "nome": "Resumo Diario",
+            "descricao": "Envia resumo das candidaturas via Telegram",
+            "frequencia": "Diario as 08:00",
+            "proxima_execucao": next_cron(8, 0),
+        },
+        {
+            "id": "relatorio_mercado",
+            "nome": "Relatorio de Mercado",
+            "descricao": "Inteligencia de mercado semanal via Telegram",
+            "frequencia": "Domingos as 18:00",
+            "proxima_execucao": next_cron(18, 0, "sun"),
+        },
+        {
+            "id": "manutencao_pipeline",
+            "nome": "Manutencao do Pipeline",
+            "descricao": "Deduplicacao, normalizacao e health check do banco",
+            "frequencia": "Segundas as 07:00",
+            "proxima_execucao": next_cron(7, 0, "mon"),
+        },
+        {
+            "id": "calibracao_scoring",
+            "nome": "Calibracao de Scoring",
+            "descricao": "Recalibra o scoring baseado nos feedbacks registrados",
+            "frequencia": "Quartas as 12:00",
+            "proxima_execucao": next_cron(12, 0, "wed"),
+        },
+    ]
+
+    return jsonify({
+        "scheduler_running": True,
+        "timezone": "America/Sao_Paulo",
+        "total_jobs": len(jobs),
+        "jobs": jobs,
+    })
 
 
 if __name__ == "__main__":
