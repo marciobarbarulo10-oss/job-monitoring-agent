@@ -164,12 +164,17 @@
     .btn-assist  { color:#06b6d4 !important; border-color:rgba(6,182,212,.3) !important; }
 
     /* ── EVOLUÇÃO CHART ─────────────────────────────────────────────────────── */
-    .evo-chart { display:flex; align-items:flex-end; gap:6px; height:60px; padding:8px 0; }
+    .evo-chart { display:flex; align-items:flex-end; gap:6px; height:60px; padding:8px 0; position:relative; z-index:1; }
     .evo-bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; }
     .evo-bar-inner { width:100%; background:var(--bg3); border-radius:3px 3px 0 0; position:relative; overflow:hidden; flex:1; }
     .evo-bar-fill  { width:100%; background:var(--accent); position:absolute; bottom:0; border-radius:3px 3px 0 0; transition:height .4s; }
     .evo-bar-pos   { width:100%; background:var(--green); position:absolute; bottom:0; opacity:.7; border-radius:3px 3px 0 0; }
     .evo-label { font-size:9px; color:var(--muted); text-align:center; }
+    .section-title { position:relative; z-index:10; }
+
+    /* ── FONTE FILTER ────────────────────────────────────────────────────────── */
+    .fonte-filter-btn { background:none; border:1px solid var(--border); color:var(--muted); padding:3px 10px; border-radius:4px; cursor:pointer; font-size:11px; font-family:inherit; }
+    .fonte-filter-btn.active { border-color:var(--accent); color:var(--accent); }
   </style>
 </head>
 <body>
@@ -293,6 +298,12 @@
           <button class="grade-filter-btn" onclick="setGradeFilter('A', this)">A</button>
           <button class="grade-filter-btn" onclick="setGradeFilter('B', this)">B</button>
           <button class="grade-filter-btn" onclick="setGradeFilter('C', this)">C</button>
+          <span style="color:var(--muted);font-size:11px;margin-left:4px">Fonte:</span>
+          <button class="fonte-filter-btn active" onclick="setFonteFilter('', this)">Todas</button>
+          <button class="fonte-filter-btn" onclick="setFonteFilter('linkedin', this)">LinkedIn</button>
+          <button class="fonte-filter-btn" onclick="setFonteFilter('gupy', this)">Gupy</button>
+          <button class="fonte-filter-btn" onclick="setFonteFilter('vagas.com', this)">Vagas.com</button>
+          <button class="fonte-filter-btn" onclick="setFonteFilter('indeed', this)">Indeed</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -419,6 +430,10 @@
             <textarea class="prefill-value" id="li-skills" rows="2" placeholder="Importacao, COMEX, ANVISA, Supply Chain, SISCOMEX"></textarea>
           </div>
           <div class="form-group">
+            <label>Idiomas</label>
+            <input class="prefill-value" type="text" id="li-idiomas" placeholder="Ex: Portugues (nativo), Ingles (intermediario)" style="min-height:auto;padding:6px 8px">
+          </div>
+          <div class="form-group">
             <label>Resumo profissional</label>
             <textarea class="prefill-value" id="li-about" rows="3" placeholder="Profissional com X anos de experiencia em..."></textarea>
           </div>
@@ -454,6 +469,27 @@
         Jobs executados automaticamente pelo scheduler.py.
       </p>
       <div id="scheduler-jobs-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <!-- Configurações numéricas -->
+    <div class="panel config-section">
+      <div class="section-title">Configuracoes de Busca</div>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
+        Ajuste os parametros do agente. Alteracoes em "Intervalo" exigem reiniciar o scheduler.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-group">
+          <label>Score minimo para notificacao (0-10)</label>
+          <input type="number" id="cfg-min-score" min="0" max="10" step="0.5" value="6.0"
+                 style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px;font-size:13px">
+        </div>
+        <div class="form-group">
+          <label>Intervalo entre buscas (horas)</label>
+          <input type="number" id="cfg-interval" min="1" max="24" value="6"
+                 style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px;font-size:13px">
+        </div>
+      </div>
+      <button class="btn-primary" id="btn-salvar-cfg" onclick="salvarConfigNumerica()">Salvar</button>
     </div>
 
     <div class="panel config-section">

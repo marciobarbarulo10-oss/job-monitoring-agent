@@ -202,6 +202,8 @@ def _process_manual_profile(manual_data: dict, linkedin_url: str = "") -> dict:
     else:
         hard = list(skills_raw) if skills_raw else []
     loc = manual_data.get("location", "")
+    idiomas_raw = manual_data.get("idiomas", "")
+    idiomas = [i.strip() for i in idiomas_raw.split(",") if i.strip()] if idiomas_raw else []
     return {
         "name": manual_data.get("name", ""),
         "headline": manual_data.get("headline", ""),
@@ -209,6 +211,7 @@ def _process_manual_profile(manual_data: dict, linkedin_url: str = "") -> dict:
         "location": {"preferred": [loc] if loc else []},
         "experience_years": int(manual_data.get("exp_years") or 0),
         "skills": {"hard": hard, "soft": []},
+        "languages": idiomas,
         "about": manual_data.get("about", ""),
         "linkedin_url": linkedin_url,
         "method": "manual",
@@ -286,6 +289,13 @@ def api_stats():
     early       = c.execute("SELECT COUNT(*) FROM vagas WHERE is_early_applicant=1").fetchone()[0]
     high_score  = c.execute("SELECT COUNT(*) FROM vagas WHERE score >= 7").fetchone()[0]
     scores      = [r[0] for r in c.execute("SELECT score FROM vagas WHERE score > 0").fetchall()]
+    # breakdown: aplicada=1 inclui vagas que ja avancaram no funil (em_analise, entrevista, etc.)
+    aplic_status = c.execute(
+        "SELECT COUNT(*) FROM vagas WHERE aplicada=1 AND status='aplicada'"
+    ).fetchone()[0]
+    aplic_avancadas = c.execute(
+        "SELECT COUNT(*) FROM vagas WHERE aplicada=1 AND status NOT IN ('aplicada','encerrada','rejeitada')"
+    ).fetchone()[0]
     try:
         cvs_gerados = c.execute("SELECT COUNT(*) FROM cv_exports").fetchone()[0]
     except Exception:
@@ -310,6 +320,7 @@ def api_stats():
         "media_score": media, "pct_acima_6": pct_acima_6,
         "taxa_conversao": taxa_conv, "cvs_gerados": cvs_gerados,
         "feedbacks": feedbacks,
+        "aplicadas_breakdown": {"em_status_aplicada": aplic_status, "avancadas_no_funil": aplic_avancadas},
         "atualizado_em": datetime.utcnow().strftime("%d/%m/%Y %H:%M"),
         "cycle_running": _cycle_running,
     })
@@ -740,6 +751,36 @@ def api_maintenance():
 
 # ── ENDPOINTS LEGADOS (mantidos para compatibilidade) ──────────────────────────
 
+_KW_STOPWORDS = {
+    'li', 'di', 'de', 'da', 'do', 'em', 'para', 'com', 'por', 'um', 'uma',
+    'os', 'as', 'na', 'no', 'se', 'que', 'ou', 'e', 'a', 'o', 'the',
+    'and', 'or', 'of', 'in', 'to', 'for', 'at', 'by', 'an', 'be', 'is',
+    'linkedin', 'vagas', 'vaga', 'job', 'jobs', 'trabalho',
+}
+
+
+def _kw_valid(kw: str) -> bool:
+    kw = kw.strip().lower()
+    if len(kw) < 3:
+        return False
+    if kw in _KW_STOPWORDS:
+        return False
+    if kw.isdigit():
+        return False
+    return True
+
+
+def _dedup_by_norm(items: list) -> list:
+    import unicodedata
+    seen, result = set(), []
+    for k in items:
+        norm = unicodedata.normalize('NFD', k.lower().strip()).encode('ascii', 'ignore').decode('ascii')
+        if norm not in seen:
+            seen.add(norm)
+            result.append(k)
+    return result
+
+
 @app.route("/api/perfil")
 def api_perfil():
     try:
@@ -756,21 +797,25 @@ def api_perfil():
             try:
                 kws = json.loads(row[0])
                 for k in kws:
-                    kw_count[k] = kw_count.get(k, 0) + 1
+                    if _kw_valid(k):
+                        kw_count[k] = kw_count.get(k, 0) + 1
             except Exception:
                 pass
 
         top_kws = sorted(kw_count.items(), key=lambda x: -x[1])[:12]
-        fortes  = [(k, v) for k, v in PERFIL["keywords"].items() if v == 3][:6]
-        medios  = [(k, v) for k, v in PERFIL["keywords"].items() if v == 2][:6]
+
+        fortes_raw = [k for k, v in PERFIL["keywords"].items() if v == 3]
+        medios_raw = [k for k, v in PERFIL["keywords"].items() if v == 2]
+        fortes = _dedup_by_norm(fortes_raw)[:6]
+        medios = _dedup_by_norm(medios_raw)[:6]
 
         return jsonify({
             "nome": PERFIL["nome"], "nivel": PERFIL["nivel"],
             "localizacao": PERFIL["localizacao"],
             "aceita_remoto": PERFIL["aceita_remoto"],
             "aceita_hibrido": PERFIL["aceita_hibrido"],
-            "fortes": [k for k, _ in fortes],
-            "medios": [k for k, _ in medios],
+            "fortes": fortes,
+            "medios": medios,
             "top_keywords_vagas": [{"kw": k, "count": c} for k, c in top_kws],
         })
     except Exception as e:
@@ -1178,6 +1223,64 @@ def api_scheduler_status():
         "total_jobs": len(jobs),
         "jobs": jobs,
     })
+
+
+# ── CONFIG NUMERICO ────────────────────────────────────────────────────────────
+
+@app.route("/api/config/settings", methods=["GET"])
+def api_get_settings():
+    """Retorna as configurações numéricas atuais."""
+    return jsonify({
+        "ok": True,
+        "min_score_notify": float(os.getenv("MIN_SCORE_TO_NOTIFY", "6.0")),
+        "min_score_cv": float(os.getenv("MIN_SCORE_AUTO_CV", "7.0")),
+        "check_interval_hours": int(os.getenv("CHECK_INTERVAL_HOURS", "6")),
+    })
+
+
+@app.route("/api/config/settings", methods=["POST"])
+def api_save_settings():
+    """Salva configurações numéricas no arquivo .env e recarrega."""
+    data = request.get_json() or {}
+    min_score = data.get("min_score_notify")
+    min_cv    = data.get("min_score_cv")
+    interval  = data.get("check_interval_hours")
+
+    env_path = os.path.join(_BASE_DIR, ".env")
+    try:
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        else:
+            lines = []
+
+        def _set_var(lines, key, value):
+            updated = False
+            for i, line in enumerate(lines):
+                if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+                    lines[i] = f"{key}={value}\n"
+                    updated = True
+                    break
+            if not updated:
+                lines.append(f"{key}={value}\n")
+            return lines
+
+        if min_score is not None:
+            lines = _set_var(lines, "MIN_SCORE_TO_NOTIFY", float(min_score))
+            os.environ["MIN_SCORE_TO_NOTIFY"] = str(float(min_score))
+        if min_cv is not None:
+            lines = _set_var(lines, "MIN_SCORE_AUTO_CV", float(min_cv))
+            os.environ["MIN_SCORE_AUTO_CV"] = str(float(min_cv))
+        if interval is not None:
+            lines = _set_var(lines, "CHECK_INTERVAL_HOURS", int(interval))
+            os.environ["CHECK_INTERVAL_HOURS"] = str(int(interval))
+
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+
+        return jsonify({"ok": True, "aviso": "Reinicie o scheduler.py para aplicar CHECK_INTERVAL_HOURS."})
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 if __name__ == "__main__":

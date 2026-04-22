@@ -1,6 +1,7 @@
 """
 scraper_vagas.py — Busca vagas no Vagas.com via scraping
 """
+import re
 import requests
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
@@ -17,6 +18,47 @@ def get_headers():
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "pt-BR,pt;q=0.9",
     }
+
+
+def _clean_text(el) -> str:
+    """Extrai texto de um elemento BeautifulSoup, normalizando espaços."""
+    if not el:
+        return ""
+    return re.sub(r'\s+', ' ', el.get_text(separator=' ', strip=True)).strip()
+
+
+def _find_empresa(card) -> str:
+    """Tenta múltiplos seletores para extrair o nome da empresa."""
+    candidates = [
+        card.find("span", class_="empregador"),
+        card.find("span", class_="empresa"),
+        card.find("span", class_=lambda c: c and "company" in str(c).lower()),
+        card.find("span", class_=lambda c: c and "employer" in str(c).lower()),
+        card.find("a",    class_=lambda c: c and "empresa" in str(c).lower()),
+        card.find("div",  class_=lambda c: c and "empresa" in str(c).lower()),
+    ]
+    for el in candidates:
+        text = _clean_text(el)
+        if text:
+            return text
+    return "Nao informado"
+
+
+def _find_local(card) -> str:
+    """Tenta múltiplos seletores para extrair a localização."""
+    candidates = [
+        card.find("span", class_="vaga-local"),
+        card.find("span", class_="local"),
+        card.find("span", class_=lambda c: c and "location" in str(c).lower()),
+        card.find("span", class_=lambda c: c and "cidade" in str(c).lower()),
+        card.find("div",  class_=lambda c: c and "local" in str(c).lower()),
+        card.find("p",    class_=lambda c: c and "local" in str(c).lower()),
+    ]
+    for el in candidates:
+        text = _clean_text(el)
+        if text:
+            return text
+    return "Nao informado"
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=4, max=20))
@@ -42,26 +84,24 @@ def buscar_vagas_com(query: str, localizacao: str = "sao-paulo-sp", max_vagas: i
 
         for card in cards[:max_vagas]:
             try:
-                titulo_el  = card.find("a", class_="link-detalhes-vaga") or card.find("h2")
-                empresa_el = card.find("span", class_="emporegador") or card.find("span", class_="empresa")
-                local_el   = card.find("span", class_="vaga-local") or card.find("span", class_="local")
-                desc_el    = card.find("p", class_="vaga-desc") or card.find("div", class_="detalhes")
+                titulo_el = card.find("a", class_="link-detalhes-vaga") or card.find("h2")
+                desc_el   = card.find("p", class_="vaga-desc") or card.find("div", class_="detalhes")
 
-                titulo  = titulo_el.get_text(strip=True) if titulo_el else ""
-                empresa = empresa_el.get_text(strip=True) if empresa_el else ""
-                local   = local_el.get_text(strip=True) if local_el else ""
-                desc    = desc_el.get_text(strip=True) if desc_el else ""
+                titulo  = _clean_text(titulo_el)
+                empresa = _find_empresa(card)
+                local   = _find_local(card)
+                desc    = _clean_text(desc_el)
                 href    = titulo_el.get("href", "") if titulo_el else ""
                 link    = f"https://www.vagas.com.br{href}" if href.startswith("/") else href
 
                 if titulo and link:
                     vagas.append({
-                        "titulo": titulo,
-                        "empresa": empresa,
-                        "localizacao": local,
-                        "descricao": desc,
-                        "url": link,
-                        "fonte": "vagas.com",
+                        "titulo":       titulo,
+                        "empresa":      empresa,
+                        "localizacao":  local,
+                        "descricao":    desc,
+                        "url":          link,
+                        "fonte":        "vagas.com",
                         "data_encontrada": datetime.utcnow(),
                     })
             except Exception as e:

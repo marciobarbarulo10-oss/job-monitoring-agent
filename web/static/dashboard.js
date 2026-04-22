@@ -6,6 +6,7 @@ const State = {
   vagasFilter: '',
   vagasGrade: '',
   vagasSearch: '',
+  vagasFonte: '',
   vagasTotal: 0,
   searchTimer: null,
   activeTab: 'pipeline',
@@ -37,11 +38,11 @@ function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function showToast(msg, err = false) {
+function showToast(msg, err = false, duration = 4000) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show' + (err ? ' err' : '');
-  setTimeout(() => { t.className = 'toast'; }, 3500);
+  setTimeout(() => { t.className = 'toast'; }, duration);
 }
 
 async function fetchJSON(url) {
@@ -157,7 +158,7 @@ async function loadTopVagas() {
 // ── VAGAS TABLE ───────────────────────────────────────────────────────────────
 async function loadVagas() {
   try {
-    const url = `/api/vagas?page=${State.vagasPage}&limit=${LIMIT}&status=${State.vagasFilter}&grade=${State.vagasGrade}&q=${encodeURIComponent(State.vagasSearch)}`;
+    const url = `/api/vagas?page=${State.vagasPage}&limit=${LIMIT}&status=${State.vagasFilter}&grade=${State.vagasGrade}&q=${encodeURIComponent(State.vagasSearch)}&fonte=${encodeURIComponent(State.vagasFonte)}`;
     const data = await fetchJSON(url);
     State.vagasTotal = data.total;
 
@@ -215,6 +216,14 @@ function setGradeFilter(grade, btn) {
   document.querySelectorAll('.grade-filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   State.vagasGrade = grade;
+  State.vagasPage = 1;
+  loadVagas();
+}
+
+function setFonteFilter(fonte, btn) {
+  document.querySelectorAll('.fonte-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  State.vagasFonte = fonte;
   State.vagasPage = 1;
   loadVagas();
 }
@@ -449,12 +458,19 @@ async function gerarRelatorioMercado() {
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 async function loadConfig() {
   try {
-    const [r, stats] = await Promise.all([
+    const [r, stats, cfg] = await Promise.all([
       fetchJSON('/api/config/profile'),
       fetchJSON('/api/stats'),
+      fetchJSON('/api/config/settings'),
     ]);
     if (r.ok) document.getElementById('profile-editor').value = r.content;
     document.getElementById('cfg-cycle').textContent = stats.cycle_running ? 'Rodando' : 'Aguardando';
+    if (cfg.ok) {
+      const ms = document.getElementById('cfg-min-score');
+      const ci = document.getElementById('cfg-interval');
+      if (ms) ms.value = cfg.min_score_notify;
+      if (ci) ci.value = cfg.check_interval_hours;
+    }
   } catch (e) { console.error('loadConfig:', e); }
 
   try {
@@ -620,7 +636,7 @@ async function confirmarCandidatura() {
   try {
     const r = await postJSON(`/api/apply/${_assistJobId}`, { level: 2 });
     if (r.ok) {
-      showToast('Candidatura registrada com sucesso!');
+      showToast('Candidatura registrada com sucesso!', false, 5000);
       closeModal();
       await refreshAll();
     } else {
@@ -639,18 +655,17 @@ async function toggleFavorito(id, btn) {
   try {
     const r = await postJSON(`/api/vagas/${id}/favorite`);
     if (r.ok) {
-      if (r.favorited) {
-        btn.classList.add('on');
-        showToast('Vaga favoritada!');
-      } else {
-        btn.classList.remove('on');
-        showToast('Favorito removido');
-      }
+      const isFav = r.favorited;
+      btn.classList.toggle('on', isFav);
+      btn.style.color = isFav ? '#F9CB42' : '';
+      btn.title = isFav ? 'Remover favorito' : 'Favoritar';
+      showToast(isFav ? 'Vaga favoritada!' : 'Favorito removido');
     }
   } catch (e) { showToast('Erro: ' + e.message, true); }
 }
 
 async function ignorarVaga(id, btn) {
+  if (!confirm('Ignorar esta vaga? Ela sera marcada como encerrada.')) return;
   try {
     const r = await postJSON(`/api/vagas/${id}/ignore`);
     if (r.ok) {
@@ -678,17 +693,19 @@ async function importarLinkedIn() {
       showToast(r.message || 'Perfil importado!');
       _renderImportedProfile(r.profile, r.source || 'linkedin', r.imported_at || '');
     } else if (r.blocked) {
-      showToast(r.sugestao || 'Use a Entrada Manual abaixo', true);
-      const form = document.getElementById('li-manual-form');
-      form.classList.add('show');
-      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showToast(r.sugestao || 'LinkedIn bloqueou o acesso automatico. Preencha manualmente.', true, 5000);
       const urlVal = (document.getElementById('li-url-input').value || '').trim();
       const slug = urlVal.replace(/\/+$/, '').split('/').pop() || '';
-      if (slug) {
-        const prefill = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const headlineEl = document.getElementById('li-headline');
-        if (!headlineEl.value) headlineEl.value = prefill;
-      }
+      setTimeout(() => {
+        const form = document.getElementById('li-manual-form');
+        form.classList.add('show');
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (slug) {
+          const nameFromSlug = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          const nameEl = document.getElementById('li-name');
+          if (!nameEl.value) nameEl.value = nameFromSlug;
+        }
+      }, 1000);
     } else {
       showToast(r.error || 'Falha ao importar perfil', true);
     }
@@ -710,13 +727,14 @@ async function salvarManual() {
   const location = document.getElementById('li-location').value.trim();
   const exp_years= parseInt(document.getElementById('li-exp').value) || 0;
   const skills   = document.getElementById('li-skills').value.trim();
+  const idiomas  = (document.getElementById('li-idiomas')?.value || '').trim();
   const about    = document.getElementById('li-about').value.trim();
 
   if (!name) { showToast('Informe pelo menos seu nome', true); return; }
 
   try {
     const r = await postJSON('/api/profile/linkedin', {
-      manual: { name, headline, location, exp_years, skills, about }
+      manual: { name, headline, location, exp_years, skills, idiomas, about }
     });
     if (r.ok) {
       showToast(r.message || 'Perfil salvo com sucesso!');
@@ -877,6 +895,22 @@ async function submitFeedback() {
 }
 
 // ── REFRESH ───────────────────────────────────────────────────────────────────
+async function salvarConfigNumerica() {
+  const minScore = parseFloat(document.getElementById('cfg-min-score')?.value);
+  const interval = parseInt(document.getElementById('cfg-interval')?.value);
+  const btn = document.getElementById('btn-salvar-cfg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const body = {};
+    if (!isNaN(minScore)) body.min_score_notify = minScore;
+    if (!isNaN(interval)) body.check_interval_hours = interval;
+    const r = await postJSON('/api/config/settings', body);
+    if (r.ok) showToast(r.aviso || 'Configuracoes salvas!', false, 5000);
+    else showToast(r.erro || 'Erro ao salvar', true);
+  } catch (e) { showToast('Erro: ' + e.message, true); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Salvar'; } }
+}
+
 async function refreshAll() {
   await Promise.all([
     loadMetrics(),
