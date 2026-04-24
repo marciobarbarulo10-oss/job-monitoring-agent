@@ -82,27 +82,59 @@ function switchTab(tabName) {
 async function loadMetrics() {
   try {
     const d = await fetchJSON('/api/stats');
-    document.getElementById('m-total').textContent     = d.total;
-    document.getElementById('m-novas').textContent     = d.novas;
-    document.getElementById('m-aplicadas').textContent = d.aplicadas;
-    document.getElementById('m-analise').textContent   = d.em_analise;
-    document.getElementById('m-entrevista').textContent= d.entrevista;
-    document.getElementById('m-conv').textContent      = d.taxa_conversao + '%';
-    document.getElementById('m-score').textContent     = d.media_score;
-    document.getElementById('m-score-sub').textContent = d.pct_acima_6 + '% acima de 6';
-    document.getElementById('m-encerradas').textContent= d.encerradas;
-    document.getElementById('m-cvs').textContent       = d.cvs_gerados;
-    document.getElementById('m-early').textContent     = d.early_applicant;
-    document.getElementById('last-update').textContent = 'Atualizado: ' + d.atualizado_em;
+    document.getElementById('m-total').textContent      = d.total;
+    document.getElementById('m-novas').textContent      = d.novas;
+    document.getElementById('m-analise').textContent    = d.em_analise;
+    document.getElementById('m-entrevista').textContent = d.entrevista;
+    document.getElementById('m-conv').textContent       = d.taxa_conversao + '%';
+    document.getElementById('m-score').textContent      = d.media_score;
+    document.getElementById('m-score-sub').textContent  = d.pct_acima_6 + '% acima de 6';
+    document.getElementById('m-encerradas').textContent = d.encerradas;
+    document.getElementById('m-cvs').textContent        = d.cvs_gerados;
+    document.getElementById('m-early').textContent      = d.early_applicant;
+    document.getElementById('last-update').textContent  = 'Atualizado: ' + d.atualizado_em;
+
+    // Em Processo card com breakdown
+    const emp = d.em_processo || {};
+    document.getElementById('m-aplicadas').textContent = emp.total ?? d.aplicadas;
+    const empSub = document.getElementById('m-aplicadas-sub');
+    if (empSub && emp.breakdown) {
+      const b = emp.breakdown;
+      const parts = [];
+      if (b.aplicada)  parts.push(b.aplicada + ' aplic');
+      if (b.entrevista) parts.push(b.entrevista + ' entrev');
+      if (b.proposta)   parts.push(b.proposta + ' prop');
+      empSub.textContent = parts.length ? parts.join(' · ') : 'em andamento';
+    }
 
     const badge = document.getElementById('badge-novas');
     if (d.novas > 0) { badge.textContent = d.novas + ' novas'; badge.classList.add('show'); }
     else badge.classList.remove('show');
 
     const cycleBadge = document.getElementById('badge-cycle');
-    if (d.cycle_running) { cycleBadge.style.display = 'inline'; }
-    else cycleBadge.style.display = 'none';
+    cycleBadge.style.display = d.cycle_running ? 'inline' : 'none';
+
+    renderBannerAcao(d.acoes_hoje || []);
   } catch (e) { console.error('loadMetrics:', e); }
+}
+
+function renderBannerAcao(acoes) {
+  const banner = document.getElementById('banner-acao');
+  const lista  = document.getElementById('acoes-lista');
+  if (!banner || !lista) return;
+  if (!acoes || !acoes.length) { banner.style.display = 'none'; return; }
+  lista.innerHTML = acoes.map(a => `
+    <div class="acao-item">
+      <span style="font-size:13px">${esc(a.texto)}</span>
+      <button class="btn-sm" onclick="setFilterDirect('${esc(a.filtro)}')" style="flex-shrink:0">${esc(a.acao)}</button>
+    </div>`).join('');
+  banner.style.display = 'block';
+}
+
+function setFilterDirect(status) {
+  const btn = document.querySelector(`.filter-btn[onclick*="'${status}'"]`)
+           || document.querySelector('.filter-btn');
+  setFilter(status, btn);
 }
 
 // ── PIPELINE ──────────────────────────────────────────────────────────────────
@@ -167,9 +199,20 @@ async function loadVagas() {
       const earlyBadge = v.is_early ? '<span class="badge-early">JANELA</span>' : '';
       const suspBadge  = v.status === 'suspeita' ? '<span class="badge-susp">SUSPEITA</span>' : '';
       const methodTag  = v.score_method === 'semantic' ? '<sup title="Score semantico">AI</sup>' : '';
-      const favClass   = v.favorited ? 'btn-fav on' : 'btn-fav';
+      const favLabel   = v.favorited ? '★' : '☆';
+      const favExtra   = v.favorited ? ' fav-ativo on' : '';
+      const favTitle   = v.favorited ? 'Remover favorito' : 'Favoritar';
+      const dataCell   = v.data_aplicacao
+        ? `<span title="Aplicada em">${esc(v.data_aplicacao)}</span>`
+        : esc(v.data_encontrada);
+      const ignoreBtn  = !v.aplicada && !v.ignored
+        ? `<button class="btn-sm btn-ignore" onclick="ignorarVaga(${v.id}, ${JSON.stringify(v.titulo)})">Ignorar</button>`
+        : '';
+      const restoreBtn = v.ignored
+        ? `<button class="btn-sm" onclick="restaurarVaga(${v.id})" title="Restaurar para Novas">↩</button>`
+        : '';
       return `
-        <tr class="${v.status === 'suspeita' ? 'row-suspicious' : ''}">
+        <tr id="job-row-${v.id}" class="${v.status === 'suspeita' ? 'row-suspicious' : ''}">
           <td>
             <span class="score-badge ${scoreClass(v.score)}">${v.score}${methodTag}</span>
             ${v.score_grade ? `<span class="grade-badge ${gradeClass(v.score_grade)}">${v.score_grade}</span>` : ''}
@@ -185,12 +228,12 @@ async function loadVagas() {
               ).join('')}
             </select>
           </td>
-          <td>${esc(v.data_encontrada)}</td>
+          <td>${dataCell}</td>
           <td class="col-acoes">
             <a href="${esc(v.url)}" target="_blank" class="btn-sm btn-link">Abrir</a>
             <button class="btn-sm btn-assist" onclick="openAssistente(${v.id}, '${esc(v.titulo)}', '${esc(v.empresa)}', '${esc(v.fonte)}', '${esc(v.url)}')">Assistente</button>
-            <button class="btn-sm ${favClass}" id="fav-${v.id}" onclick="toggleFavorito(${v.id}, this)">Fav</button>
-            ${!v.aplicada ? `<button class="btn-sm btn-ignore" onclick="ignorarVaga(${v.id}, this)">Ignorar</button>` : ''}
+            <button class="btn-sm btn-fav${favExtra}" id="fav-${v.id}" title="${favTitle}" onclick="toggleFavorito(${v.id}, this)">${favLabel}</button>
+            ${ignoreBtn}${restoreBtn}
             <button class="btn-sm" onclick="gerarCV(${v.id}, this)">CV</button>
             <button class="btn-sm btn-feedback" onclick="openFeedbackModal(${v.id}, '${esc(v.titulo)}')">FB</button>
           </td>
@@ -603,23 +646,37 @@ async function openAssistente(jobId, titulo, empresa, fonte, url) {
 
     const fields = assist.prefill_fields || [];
     if (fields.length) {
-      document.getElementById('assist-fields').innerHTML = fields.map(f => `
-        <div class="prefill-item">
-          <label class="prefill-label">${esc(f.label)}</label>
-          <div class="prefill-value" onclick="this.select && this.select()" style="cursor:text"
-               ondblclick="navigator.clipboard.writeText('${esc(f.value)}')" title="Duplo-clique para copiar">${esc(f.value)}</div>
-          ${f.note ? `<div style="font-size:11px;color:var(--muted)">${esc(f.note)}</div>` : ''}
-        </div>`).join('');
+      document.getElementById('assist-fields').innerHTML = fields.map((f, i) => {
+        const fid = `assist-field-${i}`;
+        const inputEl = f.type === 'textarea'
+          ? `<textarea id="${fid}" class="prefill-value" readonly rows="3">${esc(f.value)}</textarea>`
+          : `<input type="text" id="${fid}" class="prefill-value" readonly value="${esc(f.value)}">`;
+        return `
+          <div class="prefill-item">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+              <label class="prefill-label">${esc(f.label)}</label>
+              <button class="btn-sm prefill-copy-btn" onclick="copiarCampo('${fid}', this)" title="Copiar">&#8855;</button>
+            </div>
+            ${inputEl}
+            ${f.note ? `<div style="font-size:11px;color:var(--muted)">${esc(f.note)}</div>` : ''}
+          </div>`;
+      }).join('');
       document.getElementById('assist-fields-section').style.display = '';
     }
 
     const respostas = assist.respostas_comuns || [];
     document.getElementById('assist-respostas').innerHTML = respostas.length
-      ? respostas.map(r => `
-          <div class="resposta-item" style="margin-bottom:10px">
-            <div style="font-size:12px;font-weight:600;color:var(--accent)">${esc(r.pergunta)}</div>
-            <div style="font-size:12px;color:var(--text);margin-top:3px">${esc(r.resposta)}</div>
-          </div>`).join('')
+      ? respostas.map((r, i) => {
+          const rid = `assist-resp-${i}`;
+          return `
+            <div class="resposta-item" style="margin-bottom:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+                <div style="font-size:12px;font-weight:600;color:var(--accent)">${esc(r.pergunta)}</div>
+                <button class="btn-sm prefill-copy-btn" onclick="copiarCampo('${rid}', this)" title="Copiar">&#8855;</button>
+              </div>
+              <textarea id="${rid}" class="prefill-value" readonly rows="2" style="width:100%">${esc(r.resposta)}</textarea>
+            </div>`;
+        }).join('')
       : '<em style="color:var(--muted);font-size:12px">Nenhuma resposta sugerida disponivel.</em>';
 
   } catch (e) {
@@ -651,31 +708,63 @@ async function confirmarCandidatura() {
 }
 
 // ── FAVORITO / IGNORAR ────────────────────────────────────────────────────────
-async function toggleFavorito(id, btn) {
+async function toggleFavorito(jobId, btn) {
   try {
-    const r = await postJSON(`/api/vagas/${id}/favorite`);
+    const r = await fetch(`/api/vagas/${jobId}/favorite`, { method: 'POST' });
+    if (!r.ok) { showToast('Erro ao favoritar', true); return; }
+    const data = await r.json();
+    const ativo = data.favorito === true;
+    btn.classList.toggle('fav-ativo', ativo);
+    btn.classList.toggle('on', ativo);
+    btn.setAttribute('title', ativo ? 'Remover favorito' : 'Favoritar');
+    btn.innerHTML = ativo ? '★' : '☆';
+    showToast(ativo ? 'Vaga favoritada' : 'Favorito removido', false, 3000);
+  } catch (e) { showToast('Erro: ' + e.message, true); }
+}
+
+function removerLinhaVaga(jobId) {
+  const row = document.getElementById('job-row-' + jobId);
+  if (row) row.remove();
+  State.vagasTotal = Math.max(0, State.vagasTotal - 1);
+}
+
+async function ignorarVaga(jobId, titulo) {
+  const confirmou = confirm(
+    `Ignorar "${titulo || 'esta vaga'}"?\n\n` +
+    `Ela sera movida para "Ignoradas" e nao aparecera mais.\n` +
+    `Voce pode recupera-la depois se quiser.`
+  );
+  if (!confirmou) return;
+  try {
+    const r = await postJSON(`/api/vagas/${jobId}/ignore`);
     if (r.ok) {
-      const isFav = r.favorited;
-      btn.classList.toggle('on', isFav);
-      btn.style.color = isFav ? '#F9CB42' : '';
-      btn.title = isFav ? 'Remover favorito' : 'Favoritar';
-      showToast(isFav ? 'Vaga favoritada!' : 'Favorito removido');
+      showToast('Vaga ignorada. Acesse "Ignoradas" para desfazer.', false, 5000);
+      removerLinhaVaga(jobId);
+      loadMetrics();
     }
   } catch (e) { showToast('Erro: ' + e.message, true); }
 }
 
-async function ignorarVaga(id, btn) {
-  if (!confirm('Ignorar esta vaga? Ela sera marcada como encerrada.')) return;
+async function restaurarVaga(jobId) {
   try {
-    const r = await postJSON(`/api/vagas/${id}/ignore`);
+    const r = await postJSON(`/api/vagas/${jobId}/restore`);
     if (r.ok) {
-      const row = btn.closest('tr');
-      if (row) row.remove();
-      State.vagasTotal = Math.max(0, State.vagasTotal - 1);
-      showToast('Vaga ignorada');
+      showToast('Vaga restaurada para Novas!');
+      removerLinhaVaga(jobId);
       loadMetrics();
-    }
+    } else showToast('Erro ao restaurar', true);
   } catch (e) { showToast('Erro: ' + e.message, true); }
+}
+
+function copiarCampo(inputId, btn) {
+  const el = document.getElementById(inputId);
+  const val = el ? (el.value || el.textContent || '') : '';
+  navigator.clipboard.writeText(val).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓';
+    btn.style.color = '#639922';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 2000);
+  }).catch(() => showToast('Nao foi possivel copiar', true));
 }
 
 // ── LINKEDIN / PERFIL MANUAL ──────────────────────────────────────────────────

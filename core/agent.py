@@ -128,6 +128,7 @@ def processar_e_salvar(vagas_raw: list[dict]) -> dict:
         "notificadas": 0, "suspeitas": 0, "cvs_gerados": 0,
     }
 
+    scores_db = _get_scores_from_db()
     quality_filter = _get_quality_filter()
     opp_detector = _get_opportunity_detector()
     scorer = _get_semantic_scorer() if ENABLE_SEMANTIC else None
@@ -198,6 +199,9 @@ def processar_e_salvar(vagas_raw: list[dict]) -> dict:
             if is_early:
                 score = opp_detector.apply_boost(score, True)
                 score_result["score"] = score
+
+            # 6.5 Recalcula grade com distribuicao dinamica do nicho
+            score_result["grade"] = calcular_grade_dinamica(score, scores_db)
 
             # 7. Descarta vagas com score muito baixo
             if score < 2.0:
@@ -337,6 +341,51 @@ def _score_to_grade(score: float) -> str:
     if score >= 3.0:
         return "D"
     return "F"
+
+
+def calcular_grade_dinamica(score: float, scores_do_banco: list) -> str:
+    """Grade relativa ao nicho — usa distribuicao dos scores reais do banco."""
+    if not scores_do_banco or len(scores_do_banco) < 5:
+        return _score_to_grade(score)
+    import statistics
+    media = statistics.mean(scores_do_banco)
+    desvio = statistics.stdev(scores_do_banco) if len(scores_do_banco) > 1 else 1.0
+    if score >= media + 1.5 * desvio: return 'A'
+    if score >= media + 0.5 * desvio: return 'B'
+    if score >= media - 0.5 * desvio: return 'C'
+    if score >= media - 1.5 * desvio: return 'D'
+    return 'F'
+
+
+def _get_scores_from_db() -> list:
+    try:
+        from core.models import _DB_PATH
+        conn = _sqlite3.connect(_DB_PATH)
+        rows = conn.execute("SELECT score FROM vagas WHERE score > 0").fetchall()
+        conn.close()
+        return [r[0] for r in rows]
+    except Exception:
+        return []
+
+
+def _run_grade_migration():
+    """Recalcula grades de todas as vagas existentes com distribuicao dinamica."""
+    try:
+        from core.models import _DB_PATH
+        conn = _sqlite3.connect(_DB_PATH)
+        rows = conn.execute("SELECT id, score FROM vagas WHERE score > 0").fetchall()
+        if not rows:
+            conn.close()
+            return
+        scores = [r[1] for r in rows]
+        for row in rows:
+            new_grade = calcular_grade_dinamica(row[1], scores)
+            conn.execute("UPDATE vagas SET score_grade=? WHERE id=?", (new_grade, row[0]))
+        conn.commit()
+        conn.close()
+        logger.info(f"Grade migration: {len(rows)} vagas recalculadas")
+    except Exception as e:
+        logger.error(f"Erro na grade migration: {e}")
 
 
 def _calcular_horas_publicada(posted_at) -> str:

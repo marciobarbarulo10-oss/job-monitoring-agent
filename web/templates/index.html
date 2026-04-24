@@ -158,10 +158,17 @@
     .li-imported-info.show { display:block; }
 
     /* ── QUICK ACTIONS ──────────────────────────────────────────────────────── */
-    .btn-fav     { color:#f59e0b !important; }
-    .btn-fav.on  { background:rgba(245,158,11,.2) !important; border-color:#f59e0b !important; }
+    .btn-fav          { color:var(--muted) !important; }
+    .btn-fav.fav-ativo,
+    .btn-fav.on       { color:#F9CB42 !important; font-weight:bold; background:rgba(245,158,11,.15) !important; border-color:#f59e0b !important; }
+    .btn-fav:hover    { color:#EF9F27 !important; }
     .btn-ignore  { color:var(--muted) !important; }
     .btn-assist  { color:#06b6d4 !important; border-color:rgba(6,182,212,.3) !important; }
+
+    /* ── BANNER ACAO DIARIA ──────────────────────────────────────────────────── */
+    .banner-acao { background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.25); border-radius:var(--radius); padding:12px 16px; margin-bottom:16px; }
+    .acao-item   { display:flex; justify-content:space-between; align-items:center; padding:5px 0; gap:12px; border-bottom:1px solid rgba(255,255,255,.05); }
+    .acao-item:last-child { border-bottom:none; }
 
     /* ── EVOLUÇÃO CHART ─────────────────────────────────────────────────────── */
     .evo-chart { display:flex; align-items:flex-end; gap:6px; height:60px; padding:8px 0; position:relative; z-index:1; }
@@ -199,36 +206,42 @@
 
   <!-- METRICS -->
   <div class="metrics-grid" id="metrics-grid">
-    <div class="metric-card m-blue">
+    <div class="metric-card m-blue" title="Total de vagas coletadas em todas as fontes">
       <div class="label">Total Vagas</div><div class="value" id="m-total">—</div><div class="sub">encontradas</div>
     </div>
-    <div class="metric-card m-green">
+    <div class="metric-card m-green" title="Vagas com status Nova — ainda nao aplicadas">
       <div class="label">Novas</div><div class="value" id="m-novas">—</div><div class="sub">nao aplicadas</div>
     </div>
-    <div class="metric-card m-yellow">
-      <div class="label">Aplicadas</div><div class="value" id="m-aplicadas">—</div><div class="sub">candidaturas</div>
+    <div class="metric-card m-yellow" title="Total de candidaturas em andamento (aplicada + entrevista + proposta)">
+      <div class="label">Em Processo</div><div class="value" id="m-aplicadas">—</div><div class="sub" id="m-aplicadas-sub">em andamento</div>
     </div>
-    <div class="metric-card m-purple">
+    <div class="metric-card m-purple" title="Candidaturas aguardando retorno da empresa">
       <div class="label">Em Analise</div><div class="value" id="m-analise">—</div><div class="sub">aguardando</div>
     </div>
-    <div class="metric-card m-green">
+    <div class="metric-card m-green" title="Candidaturas que evoluiram para entrevista">
       <div class="label">Entrevistas</div><div class="value" id="m-entrevista">—</div><div class="sub">agendadas</div>
     </div>
-    <div class="metric-card m-orange">
+    <div class="metric-card m-orange" title="% de vagas que evoluiram para entrevista ou proposta apos candidatura">
       <div class="label">Conversao</div><div class="value" id="m-conv">—</div><div class="sub">% aplic/total</div>
     </div>
-    <div class="metric-card m-blue">
+    <div class="metric-card m-blue" title="Compatibilidade media entre seu perfil e as vagas encontradas (escala 0-10)">
       <div class="label">Score Medio</div><div class="value" id="m-score">—</div><div class="sub" id="m-score-sub">aderencia</div>
     </div>
-    <div class="metric-card m-red">
+    <div class="metric-card m-red" title="Vagas encerradas ou ignoradas">
       <div class="label">Encerradas</div><div class="value" id="m-encerradas">—</div><div class="sub">inativas</div>
     </div>
-    <div class="metric-card m-purple">
+    <div class="metric-card m-purple" title="CVs gerados automaticamente para vagas de alto score">
       <div class="label">CVs Gerados</div><div class="value" id="m-cvs">—</div><div class="sub">automaticos</div>
     </div>
-    <div class="metric-card m-orange">
+    <div class="metric-card m-orange" title="Vagas publicadas ha menos de 48h. Candidatos que aplicam cedo tem 2-3x mais chance de resposta.">
       <div class="label">Janela Aberta</div><div class="value" id="m-early">—</div><div class="sub">vagas &lt; 48h</div>
     </div>
+  </div>
+
+  <!-- BANNER ACAO DIARIA -->
+  <div id="banner-acao" class="banner-acao" style="display:none">
+    <strong style="font-size:13px">Sua agenda de hoje:</strong>
+    <div id="acoes-lista" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
   </div>
 
   <!-- PIPELINE CRM -->
@@ -261,6 +274,11 @@
       <div class="kw-group"><div class="kw-group-title">Competencias Core (Peso 3)</div><div class="kw-tags" id="p-fortes"></div></div>
       <div class="kw-group"><div class="kw-group-title">Competencias Tecnicas (Peso 2)</div><div class="kw-tags" id="p-medios"></div></div>
       <div class="kw-group"><div class="kw-group-title">Keywords mais buscadas nas vagas</div><div id="p-demand"></div></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5">
+        Score calculado pela compatibilidade entre suas competencias e as palavras-chave das vagas.
+        <strong>Scores acima de 6 indicam boa compatibilidade.</strong>
+        Configure ANTHROPIC_API_KEY no .env para scoring semantico avancado.
+      </p>
     </div>
   </div>
 
@@ -291,7 +309,9 @@
           <button class="filter-btn active" onclick="setFilter('', this)">Todas</button>
           <button class="filter-btn" onclick="setFilter('nova', this)">Novas</button>
           <button class="filter-btn" onclick="setFilter('aplicada', this)">Aplicadas</button>
+          <button class="filter-btn" onclick="setFilter('entrevista', this)">Entrevista</button>
           <button class="filter-btn" onclick="setFilter('encerrada', this)">Encerradas</button>
+          <button class="filter-btn" onclick="setFilter('ignoradas', this)">Ignoradas</button>
           <button class="filter-btn" onclick="setFilter('suspeita', this)">Suspeitas</button>
           <span style="color:var(--muted);font-size:11px">Grade:</span>
           <button class="grade-filter-btn active" onclick="setGradeFilter('', this)">Todas</button>
@@ -466,7 +486,7 @@
     <div class="panel config-section">
       <div class="section-title">Rotinas Agendadas</div>
       <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
-        Jobs executados automaticamente pelo scheduler.py.
+        Rotinas executadas automaticamente em segundo plano.
       </p>
       <div id="scheduler-jobs-list" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
@@ -475,7 +495,7 @@
     <div class="panel config-section">
       <div class="section-title">Configuracoes de Busca</div>
       <p style="color:var(--muted);font-size:12px;margin-bottom:14px">
-        Ajuste os parametros do agente. Alteracoes em "Intervalo" exigem reiniciar o scheduler.
+        Ajuste os parametros do agente. Alteracoes no intervalo serao aplicadas no proximo ciclo automatico.
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div class="form-group">

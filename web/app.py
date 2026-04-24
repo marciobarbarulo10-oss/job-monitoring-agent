@@ -283,19 +283,14 @@ def api_stats():
     encerradas  = c.execute("SELECT COUNT(*) FROM vagas WHERE status='encerrada'").fetchone()[0]
     em_analise  = c.execute("SELECT COUNT(*) FROM vagas WHERE status='em_analise'").fetchone()[0]
     entrevista  = c.execute("SELECT COUNT(*) FROM vagas WHERE status='entrevista'").fetchone()[0]
+    proposta    = c.execute("SELECT COUNT(*) FROM vagas WHERE status='proposta'").fetchone()[0]
     rejeitadas  = c.execute("SELECT COUNT(*) FROM vagas WHERE status='rejeitada'").fetchone()[0]
     suspeitas   = c.execute("SELECT COUNT(*) FROM vagas WHERE status='suspeita'").fetchone()[0]
     cv_gerado   = c.execute("SELECT COUNT(*) FROM vagas WHERE status='cv_gerado'").fetchone()[0]
+    aplic_status = c.execute("SELECT COUNT(*) FROM vagas WHERE status='aplicada'").fetchone()[0]
     early       = c.execute("SELECT COUNT(*) FROM vagas WHERE is_early_applicant=1").fetchone()[0]
     high_score  = c.execute("SELECT COUNT(*) FROM vagas WHERE score >= 7").fetchone()[0]
     scores      = [r[0] for r in c.execute("SELECT score FROM vagas WHERE score > 0").fetchall()]
-    # breakdown: aplicada=1 inclui vagas que ja avancaram no funil (em_analise, entrevista, etc.)
-    aplic_status = c.execute(
-        "SELECT COUNT(*) FROM vagas WHERE aplicada=1 AND status='aplicada'"
-    ).fetchone()[0]
-    aplic_avancadas = c.execute(
-        "SELECT COUNT(*) FROM vagas WHERE aplicada=1 AND status NOT IN ('aplicada','encerrada','rejeitada')"
-    ).fetchone()[0]
     try:
         cvs_gerados = c.execute("SELECT COUNT(*) FROM cv_exports").fetchone()[0]
     except Exception:
@@ -304,12 +299,53 @@ def api_stats():
         feedbacks = c.execute("SELECT COUNT(*) FROM feedback_outcomes").fetchone()[0]
     except Exception:
         feedbacks = 0
+
+    # Acoes de hoje
+    acoes_hoje = []
+    try:
+        novas_hoje = c.execute(
+            "SELECT COUNT(*) FROM vagas WHERE status='nova' "
+            "AND data_encontrada >= datetime('now', '-24 hours')"
+        ).fetchone()[0]
+        if novas_hoje > 0:
+            acoes_hoje.append({
+                "tipo": "vagas_novas",
+                "texto": f"{novas_hoje} vagas novas nas ultimas 24h",
+                "acao": "Ver vagas",
+                "filtro": "nova",
+            })
+        sem_followup = c.execute(
+            "SELECT COUNT(*) FROM vagas WHERE aplicada=1 "
+            "AND status NOT IN ('rejeitada','encerrada','proposta') "
+            "AND (last_check IS NULL OR last_check <= datetime('now', '-5 days'))"
+        ).fetchone()[0]
+        if sem_followup > 0:
+            acoes_hoje.append({
+                "tipo": "followup",
+                "texto": f"{sem_followup} candidaturas sem atualizacao ha 5+ dias",
+                "acao": "Ver candidaturas",
+                "filtro": "aplicada",
+            })
+        janela_cnt = c.execute(
+            "SELECT COUNT(*) FROM vagas WHERE is_early_applicant=1 AND status='nova'"
+        ).fetchone()[0]
+        if janela_cnt > 0:
+            acoes_hoje.append({
+                "tipo": "urgente",
+                "texto": f"{janela_cnt} vagas com janela aberta — aplique agora",
+                "acao": "Ver urgentes",
+                "filtro": "nova",
+            })
+    except Exception:
+        pass
+
     conn.close()
 
     media = round(sum(scores) / len(scores), 1) if scores else 0
     acima_6 = len([s for s in scores if s >= 6])
     pct_acima_6 = round(acima_6 / len(scores) * 100) if scores else 0
     taxa_conv = round(aplicadas / total * 100, 1) if total else 0
+    em_processo_total = aplic_status + entrevista + proposta
 
     return jsonify({
         "total": total, "aplicadas": aplicadas, "novas": novas,
@@ -320,7 +356,12 @@ def api_stats():
         "media_score": media, "pct_acima_6": pct_acima_6,
         "taxa_conversao": taxa_conv, "cvs_gerados": cvs_gerados,
         "feedbacks": feedbacks,
-        "aplicadas_breakdown": {"em_status_aplicada": aplic_status, "avancadas_no_funil": aplic_avancadas},
+        "em_processo": {
+            "total": em_processo_total,
+            "breakdown": {"aplicada": aplic_status, "entrevista": entrevista, "proposta": proposta},
+            "tooltip": "Total de candidaturas em andamento (aplicada + entrevista + proposta)",
+        },
+        "acoes_hoje": acoes_hoje,
         "atualizado_em": datetime.utcnow().strftime("%d/%m/%Y %H:%M"),
         "cycle_running": _cycle_running,
     })
@@ -344,11 +385,14 @@ def api_vagas():
     clauses, params = [], []
 
     if status_filter:
-        clauses.append("status=?"); params.append(status_filter)
+        if status_filter == 'ignoradas':
+            clauses.append("ignored=1")
+        else:
+            clauses.append("status=?"); params.append(status_filter)
     if grade_filter:
         clauses.append("score_grade=?"); params.append(grade_filter.upper())
     if fonte_filter:
-        clauses.append("fonte=?"); params.append(fonte_filter)
+        clauses.append("LOWER(fonte) LIKE ?"); params.append(f"%{fonte_filter.lower()}%")
     if modal_filter:
         clauses.append("LOWER(modalidade) LIKE ?"); params.append(f"%{modal_filter.lower()}%")
     if q:
@@ -361,7 +405,7 @@ def api_vagas():
     rows = conn.execute(
         f"SELECT id, titulo, empresa, localizacao, score, score_grade, score_analysis, "
         f"url, status, aplicada, palavras_chave, data_encontrada, data_aplicacao, "
-        f"last_check, fonte, modalidade, is_early_applicant, score_method "
+        f"last_check, fonte, modalidade, is_early_applicant, score_method, favorited, ignored "
         f"FROM vagas {where} ORDER BY score DESC, data_encontrada DESC "
         f"LIMIT ? OFFSET ?",
         params + [limit, offset],
@@ -383,6 +427,8 @@ def api_vagas():
             "keywords": kws[:6], "fonte": r["fonte"] or "—",
             "modalidade": r["modalidade"] or "", "is_early": bool(r["is_early_applicant"]),
             "score_method": r["score_method"] or "keyword",
+            "favorited": bool(r["favorited"]),
+            "ignored": bool(r["ignored"]),
             "data_encontrada": _fmt(r["data_encontrada"]),
             "data_aplicacao": _fmt(r["data_aplicacao"]),
             "last_check": _fmt(r["last_check"]),
@@ -396,8 +442,14 @@ def api_top_vagas():
     rows = conn.execute(
         "SELECT id, titulo, empresa, localizacao, score, score_grade, url, status, "
         "aplicada, palavras_chave, is_early_applicant "
-        "FROM vagas WHERE score >= 6 ORDER BY score DESC LIMIT 5"
+        "FROM vagas WHERE score_grade IN ('A','B') ORDER BY score DESC LIMIT 5"
     ).fetchall()
+    if not rows:
+        rows = conn.execute(
+            "SELECT id, titulo, empresa, localizacao, score, score_grade, url, status, "
+            "aplicada, palavras_chave, is_early_applicant "
+            "FROM vagas WHERE score > 0 ORDER BY score DESC LIMIT 5"
+        ).fetchall()
     conn.close()
 
     result = []
@@ -1053,7 +1105,7 @@ def api_toggle_favorite(job_id):
         conn.commit()
     finally:
         conn.close()
-    return jsonify({"ok": True, "favorited": bool(new_val)})
+    return jsonify({"ok": True, "favorito": bool(new_val)})
 
 
 @app.route("/api/vagas/<int:job_id>/ignore", methods=["POST"])
@@ -1061,16 +1113,49 @@ def api_ignore_vaga(job_id):
     """Marca vaga como ignorada e atualiza status."""
     conn = _db()
     try:
+        row = conn.execute("SELECT status FROM vagas WHERE id=?", (job_id,)).fetchone()
+        old_status = row["status"] if row else "nova"
         conn.execute("UPDATE vagas SET ignored=1, status='encerrada' WHERE id=?", (job_id,))
         conn.execute(
             "INSERT INTO status_history (vaga_id, status_old, status_new, timestamp, detalhes) "
-            "VALUES (?, 'nova', 'encerrada', ?, 'Ignorada pelo usuario')",
+            "VALUES (?, ?, 'encerrada', ?, 'Ignorada pelo usuario')",
+            (job_id, old_status, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/vagas/<int:job_id>/restore", methods=["POST"])
+def api_restore_vaga(job_id):
+    """Restaura vaga ignorada para status 'nova'."""
+    conn = _db()
+    try:
+        conn.execute("UPDATE vagas SET ignored=0, status='nova' WHERE id=? AND ignored=1", (job_id,))
+        conn.execute(
+            "INSERT INTO status_history (vaga_id, status_old, status_new, timestamp, detalhes) "
+            "VALUES (?, 'encerrada', 'nova', ?, 'Restaurada pelo usuario')",
             (job_id, datetime.utcnow().isoformat()),
         )
         conn.commit()
     finally:
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/maintenance/dedup-preview")
+def api_dedup_preview():
+    """Retorna contagem de duplicatas antes da remocao."""
+    conn = _db()
+    try:
+        dup_count = conn.execute(
+            "SELECT COUNT(*) FROM vagas WHERE id NOT IN ("
+            "SELECT MAX(id) FROM vagas GROUP BY LOWER(titulo), LOWER(empresa))"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    return jsonify({"duplicatas": dup_count})
 
 
 # ── EVOLUÇÃO ───────────────────────────────────────────────────────────────────
@@ -1278,14 +1363,27 @@ def api_save_settings():
         with open(env_path, "w", encoding="utf-8") as f:
             f.writelines(lines)
 
-        return jsonify({"ok": True, "aviso": "Reinicie o scheduler.py para aplicar CHECK_INTERVAL_HOURS."})
+        return jsonify({"ok": True, "aviso": "Configuracao salva! O novo intervalo de busca sera aplicado no proximo ciclo automatico."})
     except Exception as e:
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 
+def _startup_tasks():
+    """Roda tarefas de inicializacao em background."""
+    try:
+        if os.path.exists(_DB_PATH):
+            from core.agent import _run_grade_migration
+            _run_grade_migration()
+    except Exception as e:
+        logging.getLogger(__name__).debug(f"Startup grade migration: {e}")
+
+
+threading.Thread(target=_startup_tasks, daemon=True).start()
+
+
 if __name__ == "__main__":
     if not os.path.exists(_DB_PATH):
-        logging.getLogger(__name__).error(f"Banco nao encontrado: {_DB_PATH}. Execute 'python scheduler.py' primeiro.")
+        logging.getLogger(__name__).error(f"Banco nao encontrado: {_DB_PATH}. Inicialize o banco primeiro.")
         sys.exit(1)
     logging.getLogger(__name__).info(f"Banco: {_DB_PATH}")
     logging.getLogger(__name__).info("Dashboard: http://localhost:5000")
