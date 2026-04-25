@@ -387,12 +387,16 @@ def api_vagas():
     if status_filter:
         if status_filter == 'ignoradas':
             clauses.append("ignored=1")
+        elif status_filter == 'encerrada':
+            clauses.append("status=? AND (ignored IS NULL OR ignored=0)")
+            params.append(status_filter)
         else:
             clauses.append("status=?"); params.append(status_filter)
     if grade_filter:
         clauses.append("score_grade=?"); params.append(grade_filter.upper())
-    if fonte_filter:
-        clauses.append("LOWER(fonte) LIKE ?"); params.append(f"%{fonte_filter.lower()}%")
+    if fonte_filter and fonte_filter != 'todas':
+        clauses.append("LOWER(COALESCE(fonte, '')) = ?")
+        params.append(fonte_filter.lower())
     if modal_filter:
         clauses.append("LOWER(modalidade) LIKE ?"); params.append(f"%{modal_filter.lower()}%")
     if q:
@@ -692,6 +696,11 @@ def api_market_report():
         from core.market_intelligence import MarketIntelligence
         mi = MarketIntelligence()
         report = mi.get_latest_report()
+        if report and isinstance(report.get('top_keywords'), list):
+            report['top_keywords'] = [
+                kw for kw in report['top_keywords']
+                if _kw_valid(kw.get('keyword', '') if isinstance(kw, dict) else str(kw))
+            ]
         return jsonify(report)
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
@@ -804,10 +813,11 @@ def api_maintenance():
 # ── ENDPOINTS LEGADOS (mantidos para compatibilidade) ──────────────────────────
 
 _KW_STOPWORDS = {
-    'li', 'di', 'de', 'da', 'do', 'em', 'para', 'com', 'por', 'um', 'uma',
+    'li', 'di', 'ii', 'de', 'da', 'do', 'em', 'para', 'com', 'por', 'um', 'uma',
     'os', 'as', 'na', 'no', 'se', 'que', 'ou', 'e', 'a', 'o', 'the',
     'and', 'or', 'of', 'in', 'to', 'for', 'at', 'by', 'an', 'be', 'is',
     'linkedin', 'vagas', 'vaga', 'job', 'jobs', 'trabalho',
+    'awb', 'sp', 'rj', 'mg',
 }
 
 
@@ -858,8 +868,8 @@ def api_perfil():
 
         fortes_raw = [k for k, v in PERFIL["keywords"].items() if v == 3]
         medios_raw = [k for k, v in PERFIL["keywords"].items() if v == 2]
-        fortes = _dedup_by_norm(fortes_raw)[:6]
-        medios = _dedup_by_norm(medios_raw)[:6]
+        fortes = _dedup_by_norm([k for k in fortes_raw if _kw_valid(k)])[:6]
+        medios = _dedup_by_norm([k for k in medios_raw if _kw_valid(k)])[:6]
 
         return jsonify({
             "nome": PERFIL["nome"], "nivel": PERFIL["nivel"],
@@ -1216,7 +1226,8 @@ def export_csv():
     try:
         jobs = conn.execute(
             """SELECT id, titulo, empresa, localizacao, score, score_grade,
-                      status, url, data_encontrada, posted_at, is_early_applicant
+                      status, url, data_encontrada, posted_at, is_early_applicant,
+                      data_aplicacao
                FROM vagas ORDER BY score DESC"""
         ).fetchall()
     finally:
@@ -1226,7 +1237,7 @@ def export_csv():
     writer = csv.writer(output)
     writer.writerow(["ID", "Titulo", "Empresa", "Localizacao", "Score",
                      "Grade", "Status", "URL", "Encontrada em",
-                     "Publicada em", "Janela Aberta"])
+                     "Publicada em", "Janela Aberta", "Aplicada em"])
     for job in jobs:
         writer.writerow(list(job))
 
@@ -1235,6 +1246,20 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=pipeline.csv"},
     )
+
+
+@app.route("/api/debug/fontes")
+def debug_fontes():
+    """Diagnóstico: contagem de vagas por valor de fonte no banco."""
+    conn = _db()
+    try:
+        result = conn.execute(
+            "SELECT COALESCE(fonte, 'NULL') as fonte, COUNT(*) as total "
+            "FROM vagas GROUP BY fonte ORDER BY total DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+    return jsonify([{"fonte": r[0], "total": r[1]} for r in result])
 
 
 # ── SCHEDULER STATUS ──────────────────────────────────────────────────────────

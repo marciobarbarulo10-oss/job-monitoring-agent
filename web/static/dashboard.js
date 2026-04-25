@@ -38,7 +38,7 @@ function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function showToast(msg, err = false, duration = 4000) {
+function showToast(msg, err = false, duration = 3500) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show' + (err ? ' err' : '');
@@ -718,7 +718,7 @@ async function toggleFavorito(jobId, btn) {
     btn.classList.toggle('on', ativo);
     btn.setAttribute('title', ativo ? 'Remover favorito' : 'Favoritar');
     btn.innerHTML = ativo ? '★' : '☆';
-    showToast(ativo ? 'Vaga favoritada' : 'Favorito removido', false, 3000);
+    showToast(ativo ? 'Vaga favoritada' : 'Favorito removido', false, 3500);
   } catch (e) { showToast('Erro: ' + e.message, true); }
 }
 
