@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from api.routers import jobs, applications, dashboard, insights, profile
+from api.routers import jobs, applications, dashboard, insights, profile, health
 
 app = FastAPI(
     title="Job Agent API",
@@ -34,19 +34,7 @@ app.include_router(applications.router, prefix="/api/candidaturas", tags=["Candi
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(insights.router, prefix="/api/insights", tags=["Insights"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Perfil"])
-
-
-@app.get("/health")
-def health():
-    from api.db import get_db
-    try:
-        conn = get_db()
-        count = conn.execute("SELECT COUNT(*) FROM vagas").fetchone()[0]
-        conn.close()
-        db_status = {"status": "ok", "total_vagas": count}
-    except Exception as e:
-        db_status = {"status": "error", "message": str(e)}
-    return {"status": "ok", "version": "3.0.0", "db": db_status}
+app.include_router(health.router, prefix="/health", tags=["Health & QA"])
 
 
 # Serve frontend buildado em produção

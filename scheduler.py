@@ -91,6 +91,65 @@ def job_calibracao():
         logger.error(f"Erro na calibracao automatica: {e}")
 
 
+def job_qa():
+    """QA automático — verifica saúde do sistema a cada 2h."""
+    logger.info("Executando QA check automatico...")
+    try:
+        _get_orchestrator().run_qa_check()
+    except Exception as e:
+        logger.error(f"Erro no QA check: {e}")
+
+
+def job_qa_matinal():
+    """Relatório QA matinal às 07:00 — enviado ao Telegram sempre."""
+    logger.info("Executando relatorio QA matinal...")
+    try:
+        orch = _get_orchestrator()
+        report = orch.run_qa_check()
+        overall = report["overall_status"]
+        emoji = "OK" if overall == "ok" else ("AVISO" if overall == "warning" else "FALHA")
+        from notifiers.notifier_telegram import enviar_telegram
+        msg = (
+            f"*Job Agent — Relatorio Matinal*\n"
+            f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+            f"Status: *{emoji}*\n\n"
+            f"Checks ok: {report['passed']}/{report['total_checks']}"
+        )
+        if report["warnings"]:
+            msg += f"\nAvisos: {', '.join(report['warnings'])}"
+        if report["failures"]:
+            msg += f"\nFalhas: {', '.join(report['failures'])}"
+        enviar_telegram(msg)
+    except Exception as e:
+        logger.error(f"Erro no relatorio QA matinal: {e}")
+
+
+def job_git_push_diario():
+    """Push diário automático às 23:00 para o GitHub."""
+    logger.info("Executando push diario para o GitHub...")
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        _get_orchestrator().run_git_push(
+            message=f"chore: daily auto-sync {today}",
+            notify=True,
+        )
+    except Exception as e:
+        logger.error(f"Erro no push diario: {e}")
+
+
+def job_git_push_semanal():
+    """Push semanal às sextas 22:00."""
+    logger.info("Executando push semanal para o GitHub...")
+    try:
+        week = datetime.now().strftime("%Y-W%U")
+        _get_orchestrator().run_git_push(
+            message=f"chore: weekly snapshot {week}",
+            notify=True,
+        )
+    except Exception as e:
+        logger.error(f"Erro no push semanal: {e}")
+
+
 if __name__ == "__main__":
     init_db()
 
@@ -138,8 +197,41 @@ if __name__ == "__main__":
         max_instances=1,
     )
 
-    logger.info(f"Scheduler v2.0 iniciado — ciclos a cada {INTERVAL_HOURS}h")
-    logger.info("Jobs: resumo 08h | mercado dom 18h | manutencao seg 07h | calibracao qua 12h")
+    # QA a cada 2 horas
+    scheduler.add_job(
+        job_qa,
+        "interval",
+        hours=2,
+        id="qa_check",
+        max_instances=1,
+    )
+
+    # Relatório QA matinal às 07:00 (todo dia)
+    scheduler.add_job(
+        job_qa_matinal,
+        CronTrigger(hour=7, minute=0, timezone="America/Sao_Paulo"),
+        id="qa_matinal",
+        max_instances=1,
+    )
+
+    # Push diário às 23:00
+    scheduler.add_job(
+        job_git_push_diario,
+        CronTrigger(hour=23, minute=0, timezone="America/Sao_Paulo"),
+        id="git_push_diario",
+        max_instances=1,
+    )
+
+    # Push semanal toda sexta às 22:00
+    scheduler.add_job(
+        job_git_push_semanal,
+        CronTrigger(day_of_week="fri", hour=22, minute=0, timezone="America/Sao_Paulo"),
+        id="git_push_semanal",
+        max_instances=1,
+    )
+
+    logger.info(f"Scheduler v3.0 iniciado — ciclos a cada {INTERVAL_HOURS}h")
+    logger.info("Jobs: resumo 08h | qa 2h | qa-matinal 07h | mercado dom 18h | manutencao seg 07h | calibracao qua 12h | push 23h | push-semanal sex 22h")
     logger.info("Pressione Ctrl+C para parar.")
     logger.info(f"Scheduler v2.0 iniciado — {INTERVAL_HOURS}h entre ciclos")
 

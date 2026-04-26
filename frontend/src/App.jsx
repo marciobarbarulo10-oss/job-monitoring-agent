@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Jobs from './pages/Jobs'
 import Applications from './pages/Applications'
 import Insights from './pages/Insights'
+import Status from './pages/Status'
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30000 } } })
 
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'jobs', label: 'Vagas' },
   { id: 'applications', label: 'Candidaturas' },
   { id: 'insights', label: 'Insights' },
+  { id: 'status', label: 'Status' },
 ]
 
 export default function App() {
@@ -43,6 +45,7 @@ export default function App() {
           {tab === 'jobs' && <Jobs />}
           {tab === 'applications' && <Applications />}
           {tab === 'insights' && <Insights />}
+          {tab === 'status' && <Status />}
         </main>
       </div>
     </QueryClientProvider>

@@ -26,11 +26,15 @@ class Orchestrator:
         from agents.agent_matcher import MatcherAgent
         from agents.agent_monitor import MonitorAgent
         from agents.agent_notifier import NotifierAgent
+        from agents.agent_qa import QAAgent
+        from agents.agent_git import GitAgent
 
         self.collector = CollectorAgent()
         self.matcher = MatcherAgent()
         self.monitor = MonitorAgent()
         self.notifier = NotifierAgent()
+        self.qa = QAAgent()
+        self.git = GitAgent()
         logger.info("Orquestrador: todos os agentes inicializados")
 
     def run_full_cycle(self) -> dict:
@@ -70,3 +74,15 @@ class Orchestrator:
     def run_weekly_insights(self):
         """Insights semanais via Telegram."""
         self.notifier.run({"type": "weekly_insights"})
+
+    def run_qa_check(self) -> dict:
+        """Executa verificação completa de saúde do sistema."""
+        return self.qa.run()
+
+    def run_qa_single(self, check_name: str) -> dict:
+        """Executa um check específico pelo nome."""
+        return self.qa.run_single(check_name)
+
+    def run_git_push(self, message: str = None, notify: bool = True) -> dict:
+        """Faz push das mudanças para o GitHub."""
+        return self.git.run(context={"message": message, "notify": notify})
