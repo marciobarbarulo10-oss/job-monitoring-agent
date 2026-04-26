@@ -166,6 +166,11 @@ def run_migrations():
     _safe_add_column(cur, "vagas", "ignored", "BOOLEAN DEFAULT 0", colunas_vagas)
     _safe_add_column(cur, "vagas", "score_matched_kws", "TEXT", colunas_vagas)
     _safe_add_column(cur, "vagas", "score_missing_kws", "TEXT", colunas_vagas)
+    # v3.0 — multi-agent columns
+    _safe_add_column(cur, "vagas", "cover_letter", "TEXT", colunas_vagas)
+    _safe_add_column(cur, "vagas", "cv_recommended", "TEXT", colunas_vagas)
+    _safe_add_column(cur, "vagas", "is_verified", "BOOLEAN DEFAULT 1", colunas_vagas)
+    _safe_add_column(cur, "vagas", "last_verified_at", "DATETIME", colunas_vagas)
 
     # Novas tabelas (via CREATE TABLE IF NOT EXISTS)
     _DDL_NOVAS_TABELAS = [
@@ -214,6 +219,15 @@ def run_migrations():
             weight REAL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             sample_size INTEGER
+        )""",
+        """CREATE TABLE IF NOT EXISTS agent_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_name TEXT NOT NULL,
+            action TEXT NOT NULL,
+            status TEXT NOT NULL,
+            details TEXT,
+            duration_ms INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
     ]
 

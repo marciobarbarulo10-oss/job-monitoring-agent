@@ -1,6 +1,6 @@
 """
-scheduler.py — Agendador de execuções do Job Agent v2.0
-Ciclos de busca + relatórios semanais + manutenção automática.
+scheduler.py — Agendador de execuções do Job Agent v3.0
+Usa Orchestrator multi-agentes: Collector + Matcher + Monitor.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,22 +14,30 @@ from loguru import logger
 from datetime import datetime
 
 from core.models import init_db
-from core.agent import ciclo_completo, gerar_resumo
 from notifiers.notifier_telegram import (
-    notificar_resumo_diario,
-    notify_weekly_market,
     notify_feedback_insight,
     notify_maintenance_report,
 )
 
 INTERVAL_HOURS = int(os.getenv("CHECK_INTERVAL_HOURS", 6))
 
+# Orchestrator inicializado lazy para não bloquear a inicialização do scheduler
+_orchestrator = None
+
+
+def _get_orchestrator():
+    global _orchestrator
+    if _orchestrator is None:
+        from agents.orchestrator import Orchestrator
+        _orchestrator = Orchestrator()
+    return _orchestrator
+
 
 def job_busca():
-    """Ciclo principal de busca e processamento de vagas."""
+    """Ciclo principal via Orchestrator (Collector + Matcher + Monitor)."""
     logger.info(f"Ciclo agendado iniciado as {datetime.now().strftime('%H:%M')}")
     try:
-        ciclo_completo()
+        _get_orchestrator().run_full_cycle()
     except Exception as e:
         logger.error(f"Erro no ciclo agendado: {e}")
 
@@ -38,22 +46,17 @@ def job_resumo_diario():
     """Envia resumo diário das candidaturas via Telegram."""
     logger.info("Enviando resumo diario...")
     try:
-        resumo = gerar_resumo()
-        notificar_resumo_diario(resumo)
+        _get_orchestrator().run_daily_summary()
     except Exception as e:
         logger.error(f"Erro no resumo diario: {e}")
 
 
 def job_relatorio_mercado():
-    """Gera e envia relatório semanal de inteligência de mercado."""
+    """Gera e envia relatório semanal de mercado + insights LLM."""
     logger.info("Gerando relatorio semanal de mercado...")
     try:
-        from core.market_intelligence import MarketIntelligence
-        mi = MarketIntelligence()
-        report = mi.weekly_report()
-        if report:
-            notify_weekly_market(report)
-            logger.info("Relatorio de mercado enviado via Telegram")
+        _get_orchestrator().run_weekly_insights()
+        logger.info("Relatorio de mercado enviado via Telegram")
     except Exception as e:
         logger.error(f"Erro no relatorio de mercado: {e}")
 
