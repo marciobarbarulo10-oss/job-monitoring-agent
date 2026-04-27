@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-04-26T21:43:40.321157",
+  "version": "3.0",
+  "api": {
+    "/health/": 200,
+    "/health/status": 200,
+    "/health/qa": 200,
+    "/api/dashboard/summary": 200,
+    "/api/vagas/": 200,
+    "/api/candidaturas/": 200,
+    "/api/insights/market": 200,
+    "/api/profile/": 200,
+    "/docs": 200,
+    "/health/git/status": 200
+  },
+  "database": {
+    "vagas": 138,
+    "candidaturas": 8,
+    "integrity": "ok"
+  },
+  "qa": {
+    "overall": "ok",
+    "passed": 8,
+    "total": 8,
+    "checks": {
+      "database": "ok",
+      "scrapers": "ok",
+      "api": "ok",
+      "processes": "ok",
+      "score_queue": "ok",
+      "disk": "ok",
+      "logs": "ok",
+      "frontend": "ok"
+    }
+  },
+  "agents": {
+    "CollectorAgent": "ok",
+    "MatcherAgent": "ok",
+    "MonitorAgent": "ok",
+    "NotifierAgent": "ok",
+    "QAAgent": "ok",
+    "GitAgent": "ok",
+    "Orchestrator": "ok"
+  },
+  "intelligence": {
+    "scorer": "ok (score=1.2, method=keyword)",
+    "cover_letter": "ok (428 chars)",
+    "market_insights": "ok (vagas=78)"
+  },
+  "scrapers": {
+    "scraper_linkedin": "importado",
+    "scraper_gupy": "importado",
+    "scraper_vagas": "importado",
+    "scraper_indeed": "importado"
+  },
+  "git": {
+    "branch": "main",
+    "has_changes": false,
+    "remote": "github.com/marciobarbarulo10-oss/job-monitoring-agent.git"
+  }
+}
