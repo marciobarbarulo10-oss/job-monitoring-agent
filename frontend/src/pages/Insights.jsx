@@ -5,6 +5,13 @@ import { api } from '../api'
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
 export default function Insights() {
+  const { data: marketingStats } = useQuery({
+    queryKey: ['marketing-stats'],
+    queryFn: () => api.marketingStats(),
+    refetchInterval: 300_000,
+    retry: 1,
+  })
+
   const { data: report, isLoading: loadingReport } = useQuery({
     queryKey: ['market-report'],
     queryFn: api.marketReport,
@@ -87,6 +94,52 @@ export default function Insights() {
             )}
           </div>
         </>
+      )}
+
+      {/* Email Marketing — MailerLite */}
+      {marketingStats && (
+        <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="text-base font-semibold text-gray-700">Email Marketing — MailerLite</h2>
+            {!marketingStats.available && (
+              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
+                API key nao configurada
+              </span>
+            )}
+          </div>
+          {marketingStats.available ? (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                {[
+                  { label: 'Subscribers totais', value: marketingStats.stats?.total_subscribers ?? 0, color: '#1D9E75' },
+                  { label: 'Novos usuarios', value: marketingStats.stats?.groups?.novos_usuarios ?? 0, color: '#3B8BD4' },
+                  { label: 'Usuarios ativos', value: marketingStats.stats?.groups?.usuarios_ativos ?? 0, color: '#7F77DD' },
+                ].map(m => (
+                  <div key={m.label} className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold" style={{ color: m.color }}>{m.value}</div>
+                    <div className="text-xs text-gray-500 mt-1">{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400">
+                Automacao ativa: Sequencia de boas-vindas (5 emails em 17 dias) ·{' '}
+                <a
+                  href="https://dashboard.mailerlite.com/automations/185866891176182916"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-500 hover:underline"
+                >
+                  Ver no MailerLite
+                </a>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              Configure <code className="bg-gray-100 px-1 rounded">MAILERLITE_API_KEY</code> no{' '}
+              <code className="bg-gray-100 px-1 rounded">.env</code> para ativar o email marketing automatico.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Logs dos agentes */}

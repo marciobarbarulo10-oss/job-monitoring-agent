@@ -28,6 +28,7 @@ class Orchestrator:
         from agents.agent_notifier import NotifierAgent
         from agents.agent_qa import QAAgent
         from agents.agent_git import GitAgent
+        from agents.agent_marketer import MarketerAgent
 
         self.collector = CollectorAgent()
         self.matcher = MatcherAgent()
@@ -35,6 +36,7 @@ class Orchestrator:
         self.notifier = NotifierAgent()
         self.qa = QAAgent()
         self.git = GitAgent()
+        self.marketer = MarketerAgent()
         logger.info("Orquestrador: todos os agentes inicializados")
 
     def run_full_cycle(self) -> dict:
@@ -86,3 +88,7 @@ class Orchestrator:
     def run_git_push(self, message: str = None, notify: bool = True) -> dict:
         """Faz push das mudanças para o GitHub."""
         return self.git.run(context={"message": message, "notify": notify})
+
+    def run_marketing(self) -> dict:
+        """Ciclo completo de marketing: newsletter + posts + README + push."""
+        return self.marketer.run()

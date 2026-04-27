@@ -150,6 +150,26 @@ def job_git_push_semanal():
         logger.error(f"Erro no push semanal: {e}")
 
 
+def job_marketing():
+    """Ciclo completo de marketing: newsletter + posts + README + push."""
+    logger.info("Executando ciclo de marketing...")
+    try:
+        _get_orchestrator().run_marketing()
+    except Exception as e:
+        logger.error(f"Erro no ciclo de marketing: {e}")
+
+
+def job_readme_update():
+    """Atualiza README com métricas ao vivo (diário à meia-noite)."""
+    logger.info("Atualizando README com metricas ao vivo...")
+    try:
+        orch = _get_orchestrator()
+        stats = orch.marketer._get_real_stats()
+        orch.marketer.update_readme_with_stats(stats)
+    except Exception as e:
+        logger.error(f"Erro ao atualizar README: {e}")
+
+
 if __name__ == "__main__":
     init_db()
 
@@ -230,8 +250,32 @@ if __name__ == "__main__":
         max_instances=1,
     )
 
+    # Marketing — toda segunda às 09:00 (newsletter + posts + README)
+    scheduler.add_job(
+        job_marketing,
+        CronTrigger(day_of_week="mon", hour=9, minute=0, timezone="America/Sao_Paulo"),
+        id="marketing_segunda",
+        max_instances=1,
+    )
+
+    # Marketing — toda quinta às 18:00 (segundo ciclo semanal)
+    scheduler.add_job(
+        job_marketing,
+        CronTrigger(day_of_week="thu", hour=18, minute=0, timezone="America/Sao_Paulo"),
+        id="marketing_quinta",
+        max_instances=1,
+    )
+
+    # README com métricas ao vivo — todo dia à meia-noite
+    scheduler.add_job(
+        job_readme_update,
+        CronTrigger(hour=0, minute=0, timezone="America/Sao_Paulo"),
+        id="readme_update",
+        max_instances=1,
+    )
+
     logger.info(f"Scheduler v3.0 iniciado — ciclos a cada {INTERVAL_HOURS}h")
-    logger.info("Jobs: resumo 08h | qa 2h | qa-matinal 07h | mercado dom 18h | manutencao seg 07h | calibracao qua 12h | push 23h | push-semanal sex 22h")
+    logger.info("Jobs: resumo 08h | qa 2h | qa-matinal 07h | mercado dom 18h | manutencao seg 07h | calibracao qua 12h | push 23h | push-semanal sex 22h | marketing seg 09h + qui 18h | readme 00h")
     logger.info("Pressione Ctrl+C para parar.")
     logger.info(f"Scheduler v2.0 iniciado — {INTERVAL_HOURS}h entre ciclos")
 

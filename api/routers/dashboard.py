@@ -77,3 +77,23 @@ def get_summary():
         "status_counts": status_counts,
         "top_today": top_today,
     }
+
+
+@router.get("/marketing-stats")
+def get_marketing_stats():
+    """Estatísticas do MailerLite para o painel de Insights."""
+    try:
+        from intelligence.mailerlite_client import get_mailerlite_client
+        ml = get_mailerlite_client()
+        stats = ml.get_stats()
+        return {
+            "available": ml.available,
+            "stats": stats,
+            "groups": {
+                "novos_usuarios": "185866558038345309",
+                "usuarios_ativos": "185866565658347071",
+                "comunidade_github": "185866574904689757",
+            },
+        }
+    except Exception as e:
+        return {"available": False, "error": str(e)}
