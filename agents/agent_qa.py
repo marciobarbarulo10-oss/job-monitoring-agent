@@ -119,7 +119,7 @@ class QAAgent(BaseAgent):
     # ─────────────────────────────────────────────
     def check_api(self) -> dict:
         endpoints = [
-            "/health",
+            "/health/",
             "/api/dashboard/summary",
             "/api/vagas/?limit=1",
             "/api/candidaturas/",

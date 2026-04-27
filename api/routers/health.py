@@ -8,6 +8,7 @@ GET  /health/qa/{check} — um check específico
 GET  /health/git/status — status do repositório git
 POST /health/git/push   — dispara push manual para o GitHub
 """
+import asyncio
 from datetime import datetime, timedelta
 from fastapi import APIRouter
 from api.db import get_db
@@ -83,15 +84,15 @@ def system_status():
 
 
 @router.get("/qa")
-def full_qa():
-    """Executa QA completo com todos os 8 checks (pode demorar ~5-10s)."""
-    return _get_qa().run()
+async def full_qa():
+    """Executa QA completo em thread separada para não bloquear o event loop."""
+    return await asyncio.to_thread(_get_qa().run)
 
 
 @router.get("/qa/{check_name}")
-def single_qa(check_name: str):
+async def single_qa(check_name: str):
     """Executa apenas um check específico pelo nome."""
-    return _get_qa().run_single(check_name)
+    return await asyncio.to_thread(_get_qa().run_single, check_name)
 
 
 @router.get("/git/status")
