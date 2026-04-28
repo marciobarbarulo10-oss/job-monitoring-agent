@@ -183,6 +183,13 @@ async def webhook_unsubscribe(
     logger.info(f"Webhook {event_type}: {email}")
     _log_event(event_type, {"email": email, "event": event_type})
 
+    if event_type == "subscriber.unsubscribed" and email:
+        try:
+            from agents.agent_email_sequence import EmailSequenceAgent
+            EmailSequenceAgent().unsubscribe(email)
+        except Exception as e:
+            logger.warning(f"Email sequence unsubscribe falhou: {e}")
+
     return {"status": "ok", "event": event_type}
 
 

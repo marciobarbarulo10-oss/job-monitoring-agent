@@ -79,6 +79,17 @@ def get_summary():
     }
 
 
+@router.get("/email-sequence-stats")
+def get_email_sequence_stats():
+    """Stats da sequencia de emails para o dashboard."""
+    try:
+        from agents.agent_email_sequence import EmailSequenceAgent
+        seq = EmailSequenceAgent()
+        return {"available": True, "stats": seq.get_stats()}
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
 @router.get("/marketing-stats")
 def get_marketing_stats():
     """Estatísticas do MailerLite para o painel de Insights."""

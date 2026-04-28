@@ -170,6 +170,15 @@ def job_readme_update():
         logger.error(f"Erro ao atualizar README: {e}")
 
 
+def job_email_sequence():
+    """Processa e envia emails pendentes da sequência de onboarding."""
+    logger.info("Processando sequencia de emails...")
+    try:
+        _get_orchestrator().run_email_sequence()
+    except Exception as e:
+        logger.error(f"Erro na sequencia de emails: {e}")
+
+
 if __name__ == "__main__":
     init_db()
 
@@ -272,6 +281,16 @@ if __name__ == "__main__":
         CronTrigger(hour=0, minute=0, timezone="America/Sao_Paulo"),
         id="readme_update",
         max_instances=1,
+    )
+
+    # Sequência de emails de onboarding — a cada hora
+    scheduler.add_job(
+        job_email_sequence,
+        "interval",
+        hours=1,
+        id="email_sequence",
+        max_instances=1,
+        next_run_time=datetime.now(),
     )
 
     logger.info(f"Scheduler v3.0 iniciado — ciclos a cada {INTERVAL_HOURS}h")

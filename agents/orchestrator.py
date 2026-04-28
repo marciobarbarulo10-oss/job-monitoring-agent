@@ -29,6 +29,7 @@ class Orchestrator:
         from agents.agent_qa import QAAgent
         from agents.agent_git import GitAgent
         from agents.agent_marketer import MarketerAgent
+        from agents.agent_email_sequence import EmailSequenceAgent
 
         self.collector = CollectorAgent()
         self.matcher = MatcherAgent()
@@ -37,6 +38,7 @@ class Orchestrator:
         self.qa = QAAgent()
         self.git = GitAgent()
         self.marketer = MarketerAgent()
+        self.email_sequence = EmailSequenceAgent()
         logger.info("Orquestrador: todos os agentes inicializados")
 
     def run_full_cycle(self) -> dict:
@@ -92,3 +94,7 @@ class Orchestrator:
     def run_marketing(self) -> dict:
         """Ciclo completo de marketing: newsletter + posts + README + push."""
         return self.marketer.run()
+
+    def run_email_sequence(self) -> dict:
+        """Processa e envia emails pendentes da sequência."""
+        return self.email_sequence.run()

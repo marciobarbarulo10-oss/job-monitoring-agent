@@ -141,9 +141,49 @@ engine  = create_engine(f"sqlite:///{_DB_PATH}", echo=False)
 Session = sessionmaker(bind=engine)
 
 
+def get_connection() -> sqlite3.Connection:
+    """Retorna conexão SQLite raw para uso nos agentes."""
+    return sqlite3.connect(_DB_PATH)
+
+
+def init_email_sequence_table():
+    """Cria tabelas para controlar sequência de emails por subscriber."""
+    conn = sqlite3.connect(_DB_PATH)
+    cursor = conn.cursor()
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS email_sequence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            name TEXT DEFAULT '',
+            subscribed_at TEXT NOT NULL,
+            sequence_day INT DEFAULT 0,
+            next_email_at TEXT,
+            emails_sent INT DEFAULT 0,
+            completed BOOLEAN DEFAULT 0,
+            unsubscribed BOOLEAN DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(email)
+        );
+
+        CREATE TABLE IF NOT EXISTS email_sequence_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            sequence_day INT NOT NULL,
+            subject TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT,
+            sent_at TEXT DEFAULT (datetime('now'))
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     Base.metadata.create_all(engine)
     run_migrations()
+    init_email_sequence_table()
     logger.info(f"Banco inicializado: {_DB_PATH}")
 
 
