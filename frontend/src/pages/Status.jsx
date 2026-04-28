@@ -75,6 +75,13 @@ export default function Status() {
     retry: 1,
   })
 
+  const { data: webhookHealth } = useQuery({
+    queryKey: ['webhook-health'],
+    queryFn: () => axios.get(`${API_BASE}/webhooks/mailerlite/health`).then(r => r.data),
+    refetchInterval: 60_000,
+    retry: 1,
+  })
+
   const overallColor = STATUS_COLOR[qa?.overall_status] || '#999'
 
   return (
@@ -186,6 +193,43 @@ export default function Status() {
         </div>
       ) : (
         <div style={{ fontSize: 13, color: '#999' }}>Git status indisponivel</div>
+      )}
+
+      {/* Webhooks MailerLite */}
+      {webhookHealth && (
+        <>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, marginTop: 32 }}>
+            Webhooks MailerLite
+          </h3>
+          <div style={{
+            background: '#fff',
+            borderRadius: 8,
+            padding: '14px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              {(webhookHealth.endpoints || []).map(ep => (
+                <span key={ep} style={{
+                  background: '#E8F5E9',
+                  color: '#2E7D32',
+                  padding: '5px 12px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 500,
+                }}>
+                  {ep.replace('/webhooks/mailerlite/', '')}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: '#999' }}>
+              {webhookHealth.webhooks_configured} webhooks configurados
+              {' · '}
+              Ultimo check: {webhookHealth.timestamp
+                ? new Date(webhookHealth.timestamp).toLocaleTimeString('pt-BR')
+                : '—'}
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

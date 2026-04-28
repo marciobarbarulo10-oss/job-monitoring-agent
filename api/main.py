@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from api.routers import jobs, applications, dashboard, insights, profile, health
+from api.routers import jobs, applications, dashboard, insights, profile, health, webhooks
 
 app = FastAPI(
     title="Job Agent API",
@@ -35,6 +35,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"]
 app.include_router(insights.router, prefix="/api/insights", tags=["Insights"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Perfil"])
 app.include_router(health.router, prefix="/health", tags=["Health & QA"])
+app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks MailerLite"])
 
 
 # Serve frontend buildado em produção
