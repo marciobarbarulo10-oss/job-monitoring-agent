@@ -16,4 +16,5 @@ export const api = {
   profile: () => axios.get(`${BASE}/profile/`).then(r => r.data),
   health: () => axios.get('http://localhost:8000/health/').then(r => r.data),
   marketingStats: () => axios.get(`${BASE}/dashboard/marketing-stats`).then(r => r.data),
+  growthStats: () => axios.get(`${BASE}/dashboard/growth-stats`).then(r => r.data),
 }

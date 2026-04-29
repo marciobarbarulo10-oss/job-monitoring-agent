@@ -5,6 +5,8 @@ import {
 } from 'recharts'
 import { api } from '../api'
 
+const GITHUB_REPO = 'https://github.com/marciobarbarulo10-oss/job-monitoring-agent'
+
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6']
 const GRADE_COLOR = { A: '#10b981', B: '#6366f1', C: '#f59e0b', D: '#ef4444', F: '#9ca3af' }
 
@@ -23,6 +25,12 @@ export default function Dashboard() {
     queryKey: ['dashboard'],
     queryFn: api.dashboard,
     refetchInterval: 30000,
+  })
+
+  const { data: growth } = useQuery({
+    queryKey: ['growth-stats'],
+    queryFn: api.growthStats,
+    refetchInterval: 300000,
   })
 
   if (isLoading) return <div className="text-center py-12 text-gray-400">Carregando dashboard...</div>
@@ -45,6 +53,39 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+
+      {/* Painel de crescimento */}
+      {growth && (
+        <div style={{
+          background: 'linear-gradient(135deg, #1D9E75 0%, #0d7a5a 100%)',
+          borderRadius: '12px', padding: '16px 20px',
+          marginBottom: '8px', color: 'white',
+        }}>
+          <div style={{ fontSize: '11px', opacity: 0.8, marginBottom: '12px', fontWeight: 500, letterSpacing: '0.05em' }}>
+            CRESCIMENTO DO PROJETO
+          </div>
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+            {[
+              { label: 'GitHub Stars', value: growth.github?.stars ?? 0 },
+              { label: 'Forks', value: growth.github?.forks ?? 0 },
+              { label: 'Commits', value: growth.github?.total_commits ?? 0 },
+              { label: 'Subscribers', value: growth.mailerlite?.total_subscribers ?? 0 },
+              { label: 'Emails enviados', value: growth.email_sequence?.total_emails_sent ?? 0 },
+            ].map(m => (
+              <div key={m.label} style={{ textAlign: 'center', minWidth: '80px' }}>
+                <div style={{ fontSize: '22px', fontWeight: 600 }}>{m.value}</div>
+                <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '2px' }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: '10px', opacity: 0.6, marginTop: '10px' }}>
+            Atualizado {growth.updated_at ? new Date(growth.updated_at).toLocaleTimeString('pt-BR') : '—'} ·{' '}
+            <a href={GITHUB_REPO} target="_blank" rel="noreferrer" style={{ color: 'white' }}>
+              Dar estrela no GitHub
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

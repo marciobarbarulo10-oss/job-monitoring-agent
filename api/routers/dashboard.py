@@ -79,6 +79,50 @@ def get_summary():
     }
 
 
+@router.get("/growth-stats")
+def get_growth_stats():
+    """Stats consolidados de crescimento: GitHub + MailerLite + Email Sequence + Job Agent."""
+    from datetime import datetime as _dt
+    result = {"updated_at": _dt.now().isoformat()}
+
+    try:
+        from intelligence.github_client import get_github_client
+        result["github"] = get_github_client().get_full_stats()
+    except Exception as e:
+        result["github"] = {"error": str(e)}
+
+    try:
+        from intelligence.mailerlite_client import get_mailerlite_client
+        ml = get_mailerlite_client()
+        result["mailerlite"] = ml.get_stats() if ml.available else {"available": False}
+    except Exception as e:
+        result["mailerlite"] = {"error": str(e)}
+
+    try:
+        from agents.agent_email_sequence import EmailSequenceAgent
+        result["email_sequence"] = EmailSequenceAgent().get_stats()
+    except Exception as e:
+        result["email_sequence"] = {"error": str(e)}
+
+    try:
+        import sqlite3, os
+        db = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "job_agent.db")
+        conn = sqlite3.connect(db)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM vagas")
+        total = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM vagas WHERE status='entrevista'")
+        interviews = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM vagas WHERE aplicada=1")
+        applied = c.fetchone()[0]
+        conn.close()
+        result["job_agent"] = {"total_jobs": total, "active_applications": applied, "interviews": interviews}
+    except Exception as e:
+        result["job_agent"] = {"error": str(e)}
+
+    return result
+
+
 @router.get("/email-sequence-stats")
 def get_email_sequence_stats():
     """Stats da sequencia de emails para o dashboard."""

@@ -42,100 +42,162 @@ class MarketerAgent(BaseAgent):
     # DADOS REAIS DO SISTEMA
     # ─────────────────────────────────────────────
     def _get_real_stats(self) -> dict:
-        """Coleta métricas reais do banco para usar no conteúdo."""
+        """
+        Coleta stats reais de todas as fontes:
+        - Job Agent: vagas/candidaturas (banco local)
+        - GitHub: stars, forks, commits (API direta gratuita)
+        - MailerLite: total de subscribers
+        - Email Sequence: emails enviados
+        """
+        from intelligence.github_client import get_github_client
+
+        # 1. Stats do Job Agent (banco local)
+        job_stats = {
+            "total_jobs": 0, "applied": 0, "avg_score": 0.0,
+            "interviews": 0, "new_24h": 0, "high_score": 0, "sources": 0,
+            "date": datetime.now().strftime("%d/%m/%Y"),
+            "week": datetime.now().strftime("Semana %U de %Y"),
+        }
         try:
             conn = sqlite3.connect(DB_PATH, timeout=5)
             c = conn.cursor()
-
             c.execute("SELECT COUNT(*) FROM vagas")
-            total_jobs = c.fetchone()[0]
-
+            job_stats["total_jobs"] = c.fetchone()[0]
             c.execute("SELECT COUNT(*) FROM vagas WHERE aplicada=1")
-            applied = c.fetchone()[0]
-
+            job_stats["applied"] = c.fetchone()[0]
             c.execute("SELECT AVG(score) FROM vagas WHERE score > 0")
-            avg_score = round(c.fetchone()[0] or 0, 1)
-
+            job_stats["avg_score"] = round(c.fetchone()[0] or 0, 1)
             c.execute("SELECT COUNT(*) FROM vagas WHERE status='entrevista'")
-            interviews = c.fetchone()[0]
-
+            job_stats["interviews"] = c.fetchone()[0]
             cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
             c.execute("SELECT COUNT(*) FROM vagas WHERE data_encontrada >= ?", (cutoff,))
-            new_24h = c.fetchone()[0]
-
+            job_stats["new_24h"] = c.fetchone()[0]
             c.execute("SELECT COUNT(*) FROM vagas WHERE score >= 7")
-            high_score = c.fetchone()[0]
-
+            job_stats["high_score"] = c.fetchone()[0]
             c.execute("SELECT COUNT(DISTINCT fonte) FROM vagas")
-            sources = c.fetchone()[0]
-
+            job_stats["sources"] = c.fetchone()[0]
             conn.close()
-            return {
-                "total_jobs": total_jobs,
-                "applied": applied,
-                "avg_score": avg_score,
-                "interviews": interviews,
-                "new_24h": new_24h,
-                "high_score": high_score,
-                "sources": sources,
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "week": datetime.now().strftime("Semana %U de %Y"),
-            }
         except Exception as e:
-            self.logger.error(f"Erro ao obter stats: {e}")
-            return {
-                "total_jobs": 0, "applied": 0, "avg_score": 0.0,
-                "interviews": 0, "new_24h": 0, "high_score": 0,
-                "sources": 0, "date": datetime.now().strftime("%Y-%m-%d"),
-                "week": datetime.now().strftime("Semana %U de %Y"),
-            }
+            self.logger.warning(f"Job stats error: {e}")
+
+        # 2. GitHub stats (API direta — custo zero)
+        github_stats = {}
+        try:
+            gh = get_github_client()
+            github_stats = gh.get_full_stats()
+            self.logger.info(
+                f"GitHub: {github_stats.get('stars', 0)} stars, "
+                f"{github_stats.get('forks', 0)} forks, "
+                f"{github_stats.get('total_commits', 0)} commits"
+            )
+        except Exception as e:
+            self.logger.warning(f"GitHub stats error: {e}")
+
+        # 3. MailerLite subscribers
+        ml_subscribers = 0
+        try:
+            from intelligence.mailerlite_client import get_mailerlite_client
+            ml = get_mailerlite_client()
+            if ml.available:
+                ml_stats = ml.get_stats()
+                ml_subscribers = ml_stats.get("total_subscribers", 0)
+        except Exception as e:
+            self.logger.warning(f"MailerLite stats error: {e}")
+
+        # 4. Email sequence stats
+        email_stats = {}
+        try:
+            from agents.agent_email_sequence import EmailSequenceAgent
+            email_stats = EmailSequenceAgent().get_stats()
+        except Exception as e:
+            self.logger.warning(f"Email sequence stats error: {e}")
+
+        return {
+            **job_stats,
+            "github_stars": github_stats.get("stars", 0),
+            "github_forks": github_stats.get("forks", 0),
+            "github_watchers": github_stats.get("watchers", 0),
+            "github_commits": github_stats.get("total_commits", 0),
+            "github_url": github_stats.get("github_url", GITHUB_URL),
+            "subscribers": ml_subscribers,
+            "emails_sent": email_stats.get("total_emails_sent", 0),
+            "github_raw": github_stats,
+        }
 
     # ─────────────────────────────────────────────
     # GERAÇÃO DE CONTEÚDO
     # ─────────────────────────────────────────────
     def generate_twitter_post(self, stats: dict) -> str:
+        stars = stats.get("github_stars", 0)
+        commits = stats.get("github_commits", 0)
+        star_line = f"{stars} estrelas no GitHub" if stars > 0 else "Recém lançado no GitHub"
+
         if self.llm.available:
             prompt = (
-                f"Crie um tweet em português sobre o Job Agent (ferramenta open source de busca de vagas).\n"
-                f"Dados desta semana: {stats['total_jobs']} vagas monitoradas, "
-                f"score médio {stats['avg_score']}/10, {stats['new_24h']} novas hoje.\n"
-                f"Tom: direto, profissional, sem hashtags excessivas. Máximo 280 caracteres.\n"
-                f"GitHub: {GITHUB_URL}\n"
-                f"Responda APENAS com o texto do tweet."
+                f"Tweet em português sobre agente open source de busca de vagas. Maximo 240 chars.\n\n"
+                f"Stats reais:\n"
+                f"- {stats['total_jobs']} vagas monitoradas automaticamente\n"
+                f"- {stats['applied']} candidaturas rastreadas\n"
+                f"- {stats['interviews']} entrevistas geradas\n"
+                f"- {stars} estrelas no GitHub\n"
+                f"- {commits} commits no projeto\n"
+                f"- {stats.get('subscribers', 0)} pessoas na lista de email\n\n"
+                f"URL: {stats.get('github_url', GITHUB_URL)}\n"
+                f"Tags: #Python #OpenSource #JobSearch #Automacao #IA\n\n"
+                f"So o texto do tweet, sem aspas."
             )
             result = self.llm.complete(prompt, max_tokens=100)
             if result:
                 return result.strip()[:280]
 
         return (
-            f"Job Agent monitorou {stats['total_jobs']} vagas esta semana. "
-            f"Score médio: {stats['avg_score']}/10. "
-            f"{stats['new_24h']} novas hoje. "
-            f"Open source: {GITHUB_URL}"
+            f"Job Agent — busca de vagas 100% automatica!\n\n"
+            f"{stats['total_jobs']} vagas monitoradas | "
+            f"{stats['applied']} candidaturas | "
+            f"{stats['interviews']} entrevistas\n"
+            f"{star_line} | {commits} commits\n\n"
+            f"Open source: {stats.get('github_url', GITHUB_URL)}\n\n"
+            f"#Python #OpenSource #JobSearch #Automacao"
         )
 
     def generate_linkedin_post(self, stats: dict) -> str:
+        stars = stats.get("github_stars", 0)
+        commits = stats.get("github_commits", 0)
+        subs = stats.get("subscribers", 0)
+
         if self.llm.available:
             prompt = (
-                f"Crie um post profissional para LinkedIn sobre o Job Agent.\n"
-                f"Dados: {stats['total_jobs']} vagas monitoradas automaticamente, "
-                f"{stats['applied']} candidaturas ativas, "
-                f"{stats['interviews']} entrevistas geradas, "
-                f"score médio de match {stats['avg_score']}/10.\n"
-                f"Tom: profissional, inspirador. Inclua chamada para contribuir no GitHub: {GITHUB_URL}\n"
-                f"Máximo 1000 caracteres. Responda APENAS com o texto do post."
+                f"Post LinkedIn profissional sobre projeto open source de busca de vagas.\n"
+                f"3-4 paragrafos, maximo 1200 chars, tom humano.\n\n"
+                f"Stats reais ({stats.get('date', '')}):\n"
+                f"- {stats['total_jobs']} vagas coletadas automaticamente\n"
+                f"- {stats['applied']} candidaturas rastreadas no kanban\n"
+                f"- {stats['interviews']} entrevistas geradas pelo sistema\n"
+                f"- {stars} estrelas GitHub | {commits} commits | {subs} pessoas cadastradas\n\n"
+                f"Tech stack: Python, FastAPI, React, SQLite, MailerLite, Claude API\n"
+                f"Repositorio: {stats.get('github_url', GITHUB_URL)}\n\n"
+                f"Termine com CTA para dar estrela no GitHub. So o texto do post."
             )
-            result = self.llm.complete(prompt, max_tokens=300)
+            result = self.llm.complete(prompt, max_tokens=400)
             if result:
                 return result.strip()
 
+        star_label = f"{stars} estrelas no GitHub" if stars > 0 else "Recém lançado no GitHub"
         return (
-            f"Automatizei minha busca de vagas com IA.\n\n"
-            f"Esta semana: {stats['total_jobs']} vagas monitoradas em {stats['sources']} plataformas, "
-            f"score médio de {stats['avg_score']}/10, "
-            f"{stats['applied']} candidaturas ativas e {stats['interviews']} entrevistas.\n\n"
-            f"Tudo 100% automático com Python + Claude AI.\n\n"
-            f"Projeto open source: {GITHUB_URL}"
+            f"Construi um agente autonomo de busca de emprego — open source e gratuito!\n\n"
+            f"Depois de semanas rastreando vagas manualmente, automatizei todo o processo:\n\n"
+            f"O que ele faz hoje ({stats.get('date', '')}):\n"
+            f"- {stats['total_jobs']} vagas monitoradas automaticamente (LinkedIn, Gupy, Vagas.com)\n"
+            f"- {stats['applied']} candidaturas rastreadas em kanban visual\n"
+            f"- {stats['interviews']} entrevistas geradas pelo sistema\n"
+            f"- Score de aderência calculado por IA para cada vaga\n"
+            f"- Sequência de emails automática para novos usuários\n"
+            f"- {subs} pessoas ja cadastradas\n\n"
+            f"{star_label} | {commits} commits e crescendo\n\n"
+            f"100% self-hosted, gratuito, sem mensalidade.\n\n"
+            f"{stats.get('github_url', GITHUB_URL)}\n\n"
+            f"Se isso ajudar alguem em busca de emprego, deixa uma estrela!\n\n"
+            f"#Python #OpenSource #Automacao #BuscaDeEmprego #IA #JobSearch"
         )
 
     def generate_reddit_post(self, stats: dict) -> str:

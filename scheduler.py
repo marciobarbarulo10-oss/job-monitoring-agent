@@ -160,12 +160,19 @@ def job_marketing():
 
 
 def job_readme_update():
-    """Atualiza README com métricas ao vivo (diário à meia-noite)."""
+    """Atualiza README com métricas reais (GitHub stars + vagas + subscribers) e faz push."""
     logger.info("Atualizando README com metricas ao vivo...")
     try:
         orch = _get_orchestrator()
         stats = orch.marketer._get_real_stats()
-        orch.marketer.update_readme_with_stats(stats)
+        updated = orch.marketer.update_readme_with_stats(stats)
+        if updated:
+            today = datetime.now().strftime("%Y-%m-%d")
+            orch.run_git_push(
+                message=f"chore: update stats {today} — {stats.get('github_stars', 0)} stars",
+                notify=False,
+            )
+            logger.info(f"README atualizado e push realizado: {stats.get('github_stars', 0)} stars")
     except Exception as e:
         logger.error(f"Erro ao atualizar README: {e}")
 
