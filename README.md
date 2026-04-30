@@ -229,12 +229,12 @@ usa keyword matching do `config/profile.py` como fallback.
 
 | Métrica | Valor |
 |---------|-------|
-| Vagas monitoradas | **187** |
+| Vagas monitoradas | **198** |
 | Candidaturas ativas | **7** |
-| Score médio de match | **3.1/10** |
+| Score médio de match | **3.2/10** |
 | Entrevistas geradas | **0** |
-| Novas vagas (24h) | **21** |
+| Novas vagas (24h) | **32** |
 | Vagas com score ≥ 7 | **0** |
 
-_Atualizado automaticamente em 30/04/2026 00:00_
+_Atualizado automaticamente em 30/04/2026 18:00_
 <!-- STATS-END -->
