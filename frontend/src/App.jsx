@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Dashboard from './pages/Dashboard'
 import Jobs from './pages/Jobs'
@@ -18,8 +18,42 @@ const USER_TABS = [
 
 const isAdmin = new URLSearchParams(window.location.search).get('admin') === '1'
 
+const PATH_TO_TAB = {
+  '/': 'dashboard',
+  '/dashboard': 'dashboard',
+  '/vagas': 'vagas',
+  '/candidaturas': 'candidaturas',
+  '/perfil': 'perfil',
+  '/insights': 'insights',
+  '/status': 'status',
+}
+
+const TAB_TO_PATH = {
+  dashboard: '/',
+  vagas: '/vagas',
+  candidaturas: '/candidaturas',
+  perfil: '/perfil',
+  insights: '/insights',
+  status: '/status',
+}
+
+function getTabFromPath() {
+  return PATH_TO_TAB[window.location.pathname] || 'dashboard'
+}
+
 export default function App() {
-  const [tab, setTab] = useState('dashboard')
+  const [tab, setTab] = useState(getTabFromPath)
+
+  useEffect(() => {
+    const handler = () => setTab(getTabFromPath())
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
+  }, [])
+
+  const navigate = (newTab) => {
+    setTab(newTab)
+    history.pushState({}, '', TAB_TO_PATH[newTab] || '/')
+  }
 
   const visibleTabs = isAdmin
     ? [...USER_TABS, { id: 'insights', label: 'Insights' }, { id: 'status', label: 'Status' }]
@@ -34,7 +68,7 @@ export default function App() {
             {visibleTabs.map(t => (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => navigate(t.id)}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   tab === t.id
                     ? 'bg-indigo-100 text-indigo-700'

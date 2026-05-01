@@ -75,7 +75,7 @@ export default function Profile() {
   const [keywordInput, setKeywordInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [error, setError] = useState('')
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     axios.get(`${BASE}/profile/`)
@@ -131,13 +131,19 @@ export default function Profile() {
 
   const handleSave = async () => {
     setSaving(true)
-    setError('')
+    setSaveError('')
     try {
-      await axios.put(`${BASE}/profile/`, { ...form, active_cv: activeCV })
+      await axios.put(`${BASE}/profile/`, { ...form, active_cv: activeCV }, { timeout: 10000 })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-    } catch {
-      setError('Erro ao salvar perfil. Verifique se a API está rodando.')
+    } catch (e) {
+      if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+        setSaveError('Tempo esgotado. Verifique se o servidor esta rodando.')
+      } else if (e.response) {
+        setSaveError(`Erro ${e.response.status}: ${e.response.data?.detail || 'Tente novamente'}`)
+      } else {
+        setSaveError('Servidor offline. Inicie com: python -m uvicorn api.main:app --reload --port 8000')
+      }
     } finally {
       setSaving(false)
     }
@@ -272,17 +278,29 @@ export default function Profile() {
             Sugestões para sua área:
           </span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {KEYWORD_SUGGESTIONS.map(kw => (
-              <span key={kw} onClick={() => toggleSuggestion(kw)}
-                style={{
-                  padding: '3px 10px', borderRadius: '99px', fontSize: '12px', cursor: 'pointer',
-                  background: form.keywords.includes(kw) ? '#1D9E75' : '#f0f0f0',
-                  color: form.keywords.includes(kw) ? 'white' : '#555',
-                }}>
-                {kw}
-              </span>
-            ))}
+            {KEYWORD_SUGGESTIONS.map(kw => {
+              const isSelected = form.keywords.includes(kw)
+              return (
+                <span key={kw} onClick={() => toggleSuggestion(kw)}
+                  style={{
+                    padding: '5px 12px', borderRadius: '99px', fontSize: '12px',
+                    cursor: 'pointer', userSelect: 'none',
+                    transition: 'all 0.15s ease',
+                    background: isSelected ? '#1D9E75' : '#f0f0f0',
+                    color: isSelected ? 'white' : '#555',
+                    border: isSelected ? '2px solid #1D9E75' : '2px solid transparent',
+                    fontWeight: isSelected ? 500 : 400,
+                  }}>
+                  {isSelected ? '✓ ' : ''}{kw}
+                </span>
+              )
+            })}
           </div>
+          {form.keywords.length > 0 && (
+            <div style={{ marginTop: '10px', fontSize: '12px', color: '#1D9E75', fontWeight: 500 }}>
+              {form.keywords.length} {form.keywords.length === 1 ? 'habilidade selecionada' : 'habilidades selecionadas'}
+            </div>
+          )}
         </div>
 
         {form.keywords.length > 0 && (
@@ -328,21 +346,30 @@ export default function Profile() {
         </Field>
       </Section>
 
-      {error && (
-        <div style={{ background: '#fff0f0', border: '1px solid #ffcccc', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#c00' }}>
-          {error}
-        </div>
-      )}
-
       <button onClick={handleSave} disabled={saving}
         style={{
-          width: '100%', padding: '14px', background: saving ? '#aaa' : saved ? '#0d7a5a' : '#1D9E75',
+          width: '100%', padding: '14px',
+          background: saved ? '#27AE60' : saving ? '#ccc' : '#1D9E75',
           color: 'white', border: 'none', borderRadius: '10px',
           fontSize: '15px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
           transition: 'background 0.2s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
         }}>
+        {saving && (
+          <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+        )}
         {saving ? 'Salvando...' : saved ? 'Perfil salvo!' : 'Salvar perfil'}
       </button>
+
+      {saveError && (
+        <div style={{
+          marginTop: '12px', padding: '10px 14px',
+          background: '#FFF0F0', color: '#C0392B',
+          borderRadius: '8px', fontSize: '13px', lineHeight: 1.5,
+        }}>
+          {saveError}
+        </div>
+      )}
     </div>
   )
 }

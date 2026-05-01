@@ -96,10 +96,11 @@ export default function Applications() {
   const qc = useQueryClient()
   const [selectedApp, setSelectedApp] = useState(null)
 
-  const { data: apps = [], isLoading } = useQuery({
+  const { data: apps = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['candidaturas'],
     queryFn: api.candidaturas,
     refetchInterval: 15000,
+    retry: 1,
   })
 
   const mutStatus = useMutation({
@@ -107,7 +108,39 @@ export default function Applications() {
     onSuccess: () => qc.invalidateQueries(['candidaturas']),
   })
 
-  if (isLoading) return <div className="text-center py-8 text-gray-400">Carregando candidaturas...</div>
+  if (isLoading) return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '60vh', gap: '12px', color: '#666', fontSize: '14px',
+    }}>
+      <div className="w-5 h-5 border-2 border-gray-200 border-t-[#1D9E75] rounded-full animate-spin" />
+      Carregando candidaturas...
+    </div>
+  )
+
+  if (isError) return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '60vh', gap: '16px', textAlign: 'center',
+    }}>
+      <div style={{ fontSize: '40px', color: '#BA7517' }}>!</div>
+      <div style={{ fontSize: '18px', fontWeight: 500, color: '#333' }}>
+        Nao foi possivel carregar candidaturas
+      </div>
+      <div style={{ fontSize: '14px', color: '#666', maxWidth: '400px' }}>
+        Verifique se o backend esta rodando na porta 8000.
+      </div>
+      <button onClick={() => refetch()} style={{
+        padding: '10px 24px', background: '#1D9E75', color: 'white',
+        border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+      }}>
+        Tentar novamente
+      </button>
+      <div style={{ fontSize: '12px', color: '#bbb' }}>
+        python -m uvicorn api.main:app --reload --port 8000
+      </div>
+    </div>
+  )
 
   const grouped = STAGES.reduce((acc, s) => {
     acc[s.key] = apps.filter(a => a.status === s.key)

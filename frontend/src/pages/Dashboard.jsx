@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, LineChart, Line,
-  PieChart, Pie, Cell, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, ResponsiveContainer,
 } from 'recharts'
 import { api } from '../api'
 
@@ -19,16 +19,45 @@ function MetricCard({ label, value, sub, color = '#6366f1' }) {
 }
 
 export default function Dashboard() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: api.dashboard,
     refetchInterval: 30000,
+    retry: 1,
+    retryDelay: 2000,
   })
 
-  if (isLoading) return <div className="text-center py-12 text-gray-400">Carregando dashboard...</div>
-  if (error) return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
-      Erro ao conectar na API. Verifique se a FastAPI esta rodando em localhost:8000.
+  if (isLoading) return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '60vh', gap: '12px', color: '#666', fontSize: '14px',
+    }}>
+      <div className="w-5 h-5 border-2 border-gray-200 border-t-[#1D9E75] rounded-full animate-spin" />
+      Conectando ao servidor...
+    </div>
+  )
+
+  if (isError) return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '60vh', gap: '16px', textAlign: 'center',
+    }}>
+      <div style={{ fontSize: '40px', color: '#BA7517' }}>!</div>
+      <div style={{ fontSize: '18px', fontWeight: 500, color: '#333' }}>
+        Sistema temporariamente indisponivel
+      </div>
+      <div style={{ fontSize: '14px', color: '#666', maxWidth: '420px' }}>
+        Nao foi possivel conectar com o servidor. Verifique se o backend esta rodando na porta 8000.
+      </div>
+      <button onClick={() => refetch()} style={{
+        padding: '10px 24px', background: '#1D9E75', color: 'white',
+        border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+      }}>
+        Tentar novamente
+      </button>
+      <div style={{ fontSize: '12px', color: '#bbb' }}>
+        Comando: python -m uvicorn api.main:app --reload --port 8000
+      </div>
     </div>
   )
 
@@ -46,7 +75,6 @@ export default function Dashboard() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
 
-      {/* Métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Vagas encontradas" value={f.total_found || 0} color="#6366f1" />
         <MetricCard label="Score medio" value={`${data?.avg_score || 0}/10`} color="#10b981" />
@@ -55,7 +83,6 @@ export default function Dashboard() {
           sub={f.offer ? `${f.offer} oferta(s)` : ''} />
       </div>
 
-      {/* Funil */}
       <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
         <h2 className="text-base font-semibold text-gray-700 mb-4">Funil de candidaturas</h2>
         <ResponsiveContainer width="100%" height={200}>
@@ -73,7 +100,6 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Tendencia diária */}
         <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
           <h2 className="text-base font-semibold text-gray-700 mb-4">Vagas por dia (7 dias)</h2>
           <ResponsiveContainer width="100%" height={180}>
@@ -86,12 +112,12 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Por fonte */}
         <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
           <h2 className="text-base font-semibold text-gray-700 mb-4">Por plataforma</h2>
           <ResponsiveContainer width="100%" height={180}>
             <PieChart>
-              <Pie data={data?.by_source || []} dataKey="count" nameKey="fonte" cx="50%" cy="50%" outerRadius={70} label={({ fonte, percent }) => `${fonte} ${(percent * 100).toFixed(0)}%`}>
+              <Pie data={data?.by_source || []} dataKey="count" nameKey="fonte" cx="50%" cy="50%" outerRadius={70}
+                label={({ fonte, percent }) => `${fonte} ${(percent * 100).toFixed(0)}%`}>
                 {(data?.by_source || []).map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -102,7 +128,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Top vagas do dia */}
       {data?.top_today?.length > 0 && (
         <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
           <h2 className="text-base font-semibold text-gray-700 mb-3">Top vagas de hoje</h2>

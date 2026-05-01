@@ -31,7 +31,7 @@ function JobDetailModal({ job, onClose }) {
     if (coverLetter) return
     setLoadingLetter(true)
     try {
-      const r = await axios.get(`${BASE}/vagas/${job.id}/cover-letter`)
+      const r = await axios.get(`${BASE}/vagas/${job.id}/cover-letter`, { timeout: 8000 })
       setCoverLetter(r.data.cover_letter || '')
     } catch {
       setCoverLetter('Carta nao disponivel. Configure ANTHROPIC_API_KEY para gerar automaticamente.')
@@ -73,9 +73,7 @@ function JobDetailModal({ job, onClose }) {
         <div style={{ marginBottom: '20px' }}>
           <div style={{ fontSize: '13px', color: '#1D9E75', fontWeight: 500, marginBottom: '4px' }}>
             {job.fonte} &bull; Score {job.score?.toFixed(1)}/10
-            {job.grade && (
-              <span style={{ marginLeft: '8px', fontWeight: 700 }}>({job.grade})</span>
-            )}
+            {job.grade && <span style={{ marginLeft: '8px', fontWeight: 700 }}>({job.grade})</span>}
           </div>
           <h2 style={{ fontSize: '18px', margin: '0 0 4px', fontWeight: 600 }}>{job.titulo}</h2>
           <div style={{ fontSize: '14px', color: '#666' }}>
@@ -123,7 +121,8 @@ function JobDetailModal({ job, onClose }) {
           </div>
 
           {loadingLetter ? (
-            <div style={{ color: '#999', fontSize: '13px', padding: '16px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#999', fontSize: '13px', padding: '16px 0' }}>
+              <div className="w-4 h-4 border-2 border-gray-200 border-t-[#1D9E75] rounded-full animate-spin" />
               Carregando carta...
             </div>
           ) : (
@@ -160,7 +159,7 @@ export default function Jobs() {
 
   const LIMIT = 20
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['vagas', minScore, fonte, grade, search, page],
     queryFn: () => api.vagas({
       min_score: minScore || undefined,
@@ -170,10 +169,48 @@ export default function Jobs() {
       limit: LIMIT,
       offset: page * LIMIT,
     }),
+    retry: 1,
   })
 
   const vagas = data?.vagas || []
   const total = data?.total || 0
+
+  const hasFilters = minScore > 0 || grade || fonte || search
+
+  const clearFilters = () => {
+    setMinScore(0)
+    setGrade('')
+    setFonte('')
+    setSearch('')
+    setPage(0)
+  }
+
+  if (isError) return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold text-gray-800">Vagas</h1>
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '50vh', gap: '16px', textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '40px', color: '#BA7517' }}>!</div>
+        <div style={{ fontSize: '18px', fontWeight: 500, color: '#333' }}>
+          Nao foi possivel carregar as vagas
+        </div>
+        <div style={{ fontSize: '14px', color: '#666', maxWidth: '400px' }}>
+          Verifique se o backend esta rodando na porta 8000.
+        </div>
+        <button onClick={() => refetch()} style={{
+          padding: '10px 24px', background: '#1D9E75', color: 'white',
+          border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+        }}>
+          Tentar novamente
+        </button>
+        <div style={{ fontSize: '12px', color: '#bbb' }}>
+          python -m uvicorn api.main:app --reload --port 8000
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-4">
@@ -219,7 +256,34 @@ export default function Jobs() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-8 text-gray-400">Carregando...</div>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: '40vh', gap: '12px', color: '#666', fontSize: '14px',
+        }}>
+          <div className="w-5 h-5 border-2 border-gray-200 border-t-[#1D9E75] rounded-full animate-spin" />
+          Carregando vagas...
+        </div>
+      ) : vagas.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#666' }}>
+          <div style={{ fontSize: '40px', marginBottom: '16px' }}>?</div>
+          <div style={{ fontSize: '18px', fontWeight: 500, marginBottom: '8px' }}>
+            Nenhuma vaga encontrada
+          </div>
+          <div style={{ fontSize: '14px', color: '#999', marginBottom: '24px' }}>
+            {hasFilters
+              ? 'Nenhuma vaga atende aos filtros atuais.'
+              : 'O agente ainda nao coletou vagas. Execute o agente para buscar novas vagas.'}
+          </div>
+          {hasFilters && (
+            <button onClick={clearFilters} style={{
+              padding: '10px 20px', border: '1px solid #ddd',
+              borderRadius: '8px', background: 'white',
+              cursor: 'pointer', fontSize: '13px',
+            }}>
+              Limpar filtros
+            </button>
+          )}
+        </div>
       ) : (
         <div className="space-y-2">
           {vagas.map(v => (
