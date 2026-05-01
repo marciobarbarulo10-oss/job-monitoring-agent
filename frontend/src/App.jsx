@@ -5,27 +5,33 @@ import Jobs from './pages/Jobs'
 import Applications from './pages/Applications'
 import Insights from './pages/Insights'
 import Status from './pages/Status'
+import Profile from './pages/Profile'
 
 const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30000 } } })
 
-const TABS = [
+const USER_TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'jobs', label: 'Vagas' },
-  { id: 'applications', label: 'Candidaturas' },
-  { id: 'insights', label: 'Insights' },
-  { id: 'status', label: 'Status' },
+  { id: 'vagas', label: 'Vagas' },
+  { id: 'candidaturas', label: 'Candidaturas' },
+  { id: 'perfil', label: 'Meu Perfil' },
 ]
+
+const isAdmin = new URLSearchParams(window.location.search).get('admin') === '1'
 
 export default function App() {
   const [tab, setTab] = useState('dashboard')
+
+  const visibleTabs = isAdmin
+    ? [...USER_TABS, { id: 'insights', label: 'Insights' }, { id: 'status', label: 'Status' }]
+    : USER_TABS
 
   return (
     <QueryClientProvider client={qc}>
       <div className="min-h-screen bg-gray-50">
         <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6 shadow-sm">
-          <span className="font-bold text-lg text-indigo-700">Job Agent v3</span>
+          <span className="font-bold text-lg text-indigo-700">Job Agent</span>
           <div className="flex gap-1">
-            {TABS.map(t => (
+            {visibleTabs.map(t => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
@@ -42,8 +48,9 @@ export default function App() {
         </nav>
         <main className="max-w-6xl mx-auto px-6 py-6">
           {tab === 'dashboard' && <Dashboard />}
-          {tab === 'jobs' && <Jobs />}
-          {tab === 'applications' && <Applications />}
+          {tab === 'vagas' && <Jobs />}
+          {tab === 'candidaturas' && <Applications />}
+          {tab === 'perfil' && <Profile />}
           {tab === 'insights' && <Insights />}
           {tab === 'status' && <Status />}
         </main>

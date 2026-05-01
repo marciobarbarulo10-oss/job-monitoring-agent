@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 
@@ -15,8 +16,86 @@ const STATUS_NEXT = {
   entrevista: 'proposta',
 }
 
+function InfoRow({ label, value }) {
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <span style={{ fontSize: '12px', color: '#999' }}>{label}: </span>
+      <span style={{ fontSize: '13px', fontWeight: 500 }}>{value || '—'}</span>
+    </div>
+  )
+}
+
+function AppDetailModal({ app, onClose }) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000, padding: '20px',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        background: 'white', borderRadius: '16px', padding: '28px',
+        width: '100%', maxWidth: '580px', maxHeight: '80vh', overflow: 'auto',
+        position: 'relative',
+      }}>
+        <button onClick={onClose} style={{
+          position: 'absolute', top: '16px', right: '16px',
+          background: 'none', border: 'none', fontSize: '22px',
+          cursor: 'pointer', color: '#999', lineHeight: 1,
+        }}>&times;</button>
+
+        <h2 style={{ fontSize: '17px', marginBottom: '4px', fontWeight: 600, paddingRight: '24px' }}>
+          {app.titulo}
+        </h2>
+        <div style={{ fontSize: '13px', color: '#666', marginBottom: '20px' }}>
+          {app.empresa} &bull; Candidatada em {app.data_aplicacao || '—'}
+        </div>
+
+        <InfoRow label="Curriculo usado" value={app.cv_version || 'Nao registrado'} />
+        <InfoRow label="Score" value={app.score ? `${app.score}/10` : null} />
+        <InfoRow label="Status" value={app.status} />
+
+        {app.cover_letter_used && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>Carta enviada:</div>
+            <div style={{
+              background: '#f9f9f9', padding: '12px', borderRadius: '8px',
+              fontSize: '12px', lineHeight: 1.6, whiteSpace: 'pre-wrap',
+              maxHeight: '200px', overflow: 'auto',
+            }}>
+              {app.cover_letter_used}
+            </div>
+          </div>
+        )}
+
+        {app.notas && (
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>Notas:</div>
+            <div style={{ fontSize: '12px', color: '#555', lineHeight: 1.5 }}>{app.notas}</div>
+          </div>
+        )}
+
+        {app.url && (
+          <a href={app.url} target="_blank" rel="noreferrer"
+            style={{
+              display: 'block', textAlign: 'center', padding: '10px',
+              background: '#f0faf6', color: '#1D9E75', borderRadius: '8px',
+              textDecoration: 'none', fontSize: '13px', fontWeight: 500,
+            }}>
+            Ver vaga original
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Applications() {
   const qc = useQueryClient()
+  const [selectedApp, setSelectedApp] = useState(null)
+
   const { data: apps = [], isLoading } = useQuery({
     queryKey: ['candidaturas'],
     queryFn: api.candidaturas,
@@ -37,6 +116,10 @@ export default function Applications() {
 
   return (
     <div className="space-y-4">
+      {selectedApp && (
+        <AppDetailModal app={selectedApp} onClose={() => setSelectedApp(null)} />
+      )}
+
       <h1 className="text-2xl font-bold text-gray-800">Candidaturas</h1>
       <p className="text-sm text-gray-500">{apps.length} candidatura(s) no total</p>
 
@@ -53,9 +136,14 @@ export default function Applications() {
               <div className="space-y-2">
                 {(grouped[stage.key] || []).map(app => (
                   <div key={app.id} className="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-                    <p className="text-xs font-semibold text-gray-800 truncate">{app.titulo}</p>
-                    <p className="text-xs text-gray-500 truncate">{app.empresa}</p>
-                    <p className="text-xs text-gray-400 mt-1">{app.data_aplicacao}</p>
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => setSelectedApp(app)}
+                    >
+                      <p className="text-xs font-semibold text-gray-800 truncate hover:text-indigo-600">{app.titulo}</p>
+                      <p className="text-xs text-gray-500 truncate">{app.empresa}</p>
+                      <p className="text-xs text-gray-400 mt-1">{app.data_aplicacao}</p>
+                    </div>
                     <div className="flex gap-1 mt-2 flex-wrap">
                       {STATUS_NEXT[app.status] && (
                         <button

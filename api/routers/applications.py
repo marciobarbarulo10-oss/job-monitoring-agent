@@ -21,7 +21,8 @@ class StatusUpdate(BaseModel):
 def list_applications():
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, titulo, empresa, status, data_aplicacao, last_check, url, notas, score "
+        "SELECT id, titulo, empresa, status, data_aplicacao, last_check, url, notas, score, "
+        "cover_letter, cv_recommended "
         "FROM vagas WHERE aplicada=1 ORDER BY data_aplicacao DESC"
     ).fetchall()
     conn.close()
@@ -36,6 +37,8 @@ def list_applications():
             "last_check": fmt_dt(r["last_check"]),
             "url": r["url"],
             "notas": r["notas"] or "",
+            "cover_letter_used": r["cover_letter"] or "",
+            "cv_version": r["cv_recommended"] or "",
         }
         for r in rows
     ]

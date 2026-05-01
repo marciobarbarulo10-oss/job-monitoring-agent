@@ -269,6 +269,12 @@ def run_migrations():
             duration_ms INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS user_profile_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_data TEXT NOT NULL,
+            source TEXT DEFAULT 'ui',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
 
     for ddl in _DDL_NOVAS_TABELAS:

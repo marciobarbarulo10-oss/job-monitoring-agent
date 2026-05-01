@@ -17,9 +17,15 @@ from api.routers import jobs, applications, dashboard, insights, profile, health
 
 app = FastAPI(
     title="Job Agent API",
-    description="API REST do sistema de monitoramento de vagas — v3.0",
-    version="3.0.0",
+    description="API REST do sistema de monitoramento de vagas — v8.0",
+    version="8.0.0",
 )
+
+
+@app.on_event("startup")
+def _startup():
+    from core.models import init_db
+    init_db()
 
 app.add_middleware(
     CORSMiddleware,
