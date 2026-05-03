@@ -4,12 +4,15 @@ Substitui o config/profile.py estático por dados dinâmicos do banco.
 """
 import os
 import json
+import logging
 import shutil
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 from api.db import get_db
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -224,16 +227,51 @@ def update_profile(body: ProfileUpdate):
 
 @router.post("/upload-cv")
 async def upload_cv(file: UploadFile = File(...)):
-    if not file.filename.endswith(".pdf"):
+    os.makedirs(CV_UPLOAD_DIR, exist_ok=True)
+
+    if not file.filename:
+        raise HTTPException(400, "Nenhum arquivo selecionado")
+
+    if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Apenas arquivos PDF são aceitos")
 
-    safe_name = file.filename.replace(" ", "_").replace("/", "_")
+    try:
+        content = await file.read()
+    except Exception as e:
+        logger.error(f"Erro ao ler arquivo: {e}")
+        raise HTTPException(500, f"Erro ao ler arquivo: {str(e)}")
+
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Arquivo muito grande. Maximo: 5MB")
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(400, "Arquivo invalido. Certifique-se de enviar um PDF valido")
+
+    safe_name = "".join(
+        c if c.isalnum() or c in "._- " else "_"
+        for c in file.filename
+    ).strip().replace(" ", "_")
+
+    if not safe_name:
+        safe_name = "curriculo.pdf"
+
     dest = os.path.join(CV_UPLOAD_DIR, safe_name)
 
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    try:
+        with open(dest, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"Erro ao salvar arquivo: {e}")
+        raise HTTPException(500, f"Erro ao salvar arquivo: {str(e)}")
 
-    return {"success": True, "filename": safe_name, "path": dest}
+    logger.info(f"CV enviado: {safe_name} ({len(content)} bytes)")
+
+    return {
+        "success": True,
+        "filename": safe_name,
+        "size_kb": round(len(content) / 1024, 1),
+        "path": dest,
+    }
 
 
 @router.get("/cvs")

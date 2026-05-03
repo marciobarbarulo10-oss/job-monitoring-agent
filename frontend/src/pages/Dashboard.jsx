@@ -3,7 +3,9 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, LineChart, Line,
   PieChart, Pie, Cell, ResponsiveContainer,
 } from 'recharts'
-import { api } from '../api'
+import axios from 'axios'
+
+const API_BASE = 'http://localhost:8000'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6']
 const GRADE_COLOR = { A: '#10b981', B: '#6366f1', C: '#f59e0b', D: '#ef4444', F: '#9ca3af' }
@@ -19,9 +21,17 @@ function MetricCard({ label, value, sub, color = '#6366f1' }) {
 }
 
 export default function Dashboard() {
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['dashboard'],
-    queryFn: api.dashboard,
+    queryFn: async () => {
+      try {
+        const r = await axios.get(`${API_BASE}/api/dashboard/summary`, { timeout: 8000 })
+        return r.data
+      } catch (err) {
+        console.error('Dashboard query error:', err.message, err.response?.data)
+        throw err
+      }
+    },
     refetchInterval: 30000,
     retry: 1,
     retryDelay: 2000,
@@ -39,15 +49,24 @@ export default function Dashboard() {
 
   if (isError) return (
     <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', height: '60vh', gap: '16px', textAlign: 'center',
+      maxWidth: '600px', margin: '60px auto', padding: '32px',
+      background: '#FFF0F0', borderRadius: '12px', textAlign: 'center',
     }}>
-      <div style={{ fontSize: '40px', color: '#BA7517' }}>!</div>
-      <div style={{ fontSize: '18px', fontWeight: 500, color: '#333' }}>
-        Sistema temporariamente indisponivel
+      <div style={{ fontSize: '40px', marginBottom: '16px' }}>!</div>
+      <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px', color: '#C0392B' }}>
+        Erro ao carregar dashboard
       </div>
-      <div style={{ fontSize: '14px', color: '#666', maxWidth: '420px' }}>
-        Nao foi possivel conectar com o servidor. Verifique se o backend esta rodando na porta 8000.
+      <div style={{
+        fontSize: '13px', color: '#666', marginBottom: '20px',
+        background: '#fff', padding: '12px', borderRadius: '8px',
+        fontFamily: 'monospace', textAlign: 'left',
+      }}>
+        {error?.message || 'Erro desconhecido'}
+        {error?.response?.data && (
+          <div style={{ marginTop: '8px', color: '#C0392B' }}>
+            {JSON.stringify(error.response.data, null, 2)}
+          </div>
+        )}
       </div>
       <button onClick={() => refetch()} style={{
         padding: '10px 24px', background: '#1D9E75', color: 'white',
@@ -55,7 +74,7 @@ export default function Dashboard() {
       }}>
         Tentar novamente
       </button>
-      <div style={{ fontSize: '12px', color: '#bbb' }}>
+      <div style={{ fontSize: '12px', color: '#bbb', marginTop: '16px' }}>
         Comando: python -m uvicorn api.main:app --reload --port 8000
       </div>
     </div>

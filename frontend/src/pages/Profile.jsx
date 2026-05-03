@@ -76,6 +76,8 @@ export default function Profile() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [uploadingCV, setUploadingCV] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState('')
 
   useEffect(() => {
     axios.get(`${BASE}/profile/`)
@@ -111,23 +113,43 @@ export default function Profile() {
   const handleCVUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    if (!file.name.endsWith('.pdf')) {
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
       alert('Apenas arquivos PDF são aceitos')
       return
     }
-    const formData = new FormData()
-    formData.append('file', file)
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Arquivo muito grande. Máximo: 5MB')
+      return
+    }
+
+    setUploadingCV(true)
+
     try {
-      const r = await axios.post(`${BASE}/profile/upload-cv`, formData)
+      const formData = new FormData()
+      formData.append('file', file)
+      const r = await axios.post(`${BASE}/profile/upload-cv`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000,
+      })
       if (r.data.success) {
         setCvFiles(prev => prev.includes(r.data.filename) ? prev : [...prev, r.data.filename])
         if (!activeCV) setActiveCV(r.data.filename)
+        setUploadSuccess(r.data.filename)
+        setTimeout(() => setUploadSuccess(''), 3000)
       }
-    } catch {
-      alert('Erro ao enviar arquivo')
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Erro ao enviar arquivo'
+      alert(`Erro ao enviar: ${msg}`)
+      console.error('Upload error:', err)
+    } finally {
+      setUploadingCV(false)
+      e.target.value = ''
     }
-    e.target.value = ''
   }
+
+  const isNewUser = !form.target_role && !form.name
 
   const handleSave = async () => {
     setSaving(true)
@@ -135,7 +157,14 @@ export default function Profile() {
     try {
       await axios.put(`${BASE}/profile/`, { ...form, active_cv: activeCV }, { timeout: 10000 })
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      if (isNewUser) {
+        setTimeout(() => {
+          history.pushState({}, '', '/')
+          window.dispatchEvent(new PopStateEvent('popstate'))
+        }, 1500)
+      } else {
+        setTimeout(() => setSaved(false), 3000)
+      }
     } catch (e) {
       if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
         setSaveError('Tempo esgotado. Verifique se o servidor esta rodando.')
@@ -170,9 +199,23 @@ export default function Profile() {
   return (
     <div style={{ maxWidth: '720px', margin: '0 auto', padding: '32px 24px' }}>
       <h1 style={{ fontSize: '22px', fontWeight: 600, marginBottom: '8px' }}>Meu Perfil</h1>
-      <p style={{ fontSize: '13px', color: '#666', marginBottom: '32px' }}>
+      <p style={{ fontSize: '13px', color: '#666', marginBottom: '24px' }}>
         Suas informações são usadas para calcular o score de cada vaga e gerar cartas de apresentação personalizadas.
       </p>
+
+      {isNewUser && (
+        <div style={{
+          background: 'linear-gradient(135deg, #1D9E75, #0d7a5a)',
+          borderRadius: '12px', padding: '20px 24px',
+          marginBottom: '32px', color: 'white',
+        }}>
+          <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>Bem-vindo ao Job Agent!</div>
+          <div style={{ fontSize: '14px', opacity: 0.9, lineHeight: 1.6 }}>
+            Configure seu perfil para que o agente encontre as vagas certas para voce.
+            Leva menos de 2 minutos e faz toda a diferenca no score de aderencia.
+          </div>
+        </div>
+      )}
 
       <Section title="Dados básicos">
         <Field label="Nome completo">
@@ -243,11 +286,30 @@ export default function Profile() {
 
         <label style={{
           display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '12px 16px', border: '2px dashed #ddd',
-          borderRadius: '8px', cursor: 'pointer', fontSize: '13px', color: '#666',
+          padding: '12px 16px',
+          border: `2px dashed ${uploadSuccess ? '#1D9E75' : '#ddd'}`,
+          borderRadius: '8px',
+          cursor: uploadingCV ? 'not-allowed' : 'pointer',
+          fontSize: '13px',
+          color: uploadSuccess ? '#1D9E75' : '#666',
+          background: uploadSuccess ? '#f0faf6' : 'white',
+          transition: 'all 0.2s',
         }}>
-          <span>Enviar novo curriculo (PDF)</span>
-          <input type="file" accept=".pdf" onChange={handleCVUpload} style={{ display: 'none' }} />
+          <span style={{ fontSize: '18px' }}>
+            {uploadingCV ? '...' : uploadSuccess ? 'OK' : 'PDF'}
+          </span>
+          {uploadingCV
+            ? 'Enviando...'
+            : uploadSuccess
+            ? `${uploadSuccess} enviado!`
+            : 'Enviar novo curriculo (PDF)'}
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleCVUpload}
+            disabled={uploadingCV}
+            style={{ display: 'none' }}
+          />
         </label>
       </Section>
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import axios from 'axios'
 import Dashboard from './pages/Dashboard'
 import Jobs from './pages/Jobs'
 import Applications from './pages/Applications'
@@ -43,11 +44,31 @@ function getTabFromPath() {
 
 export default function App() {
   const [tab, setTab] = useState(getTabFromPath)
+  const [profileChecking, setProfileChecking] = useState(
+    // só verifica na rota raiz para não bloquear quem acessa /perfil direto
+    window.location.pathname === '/' || window.location.pathname === '/dashboard'
+  )
 
   useEffect(() => {
     const handler = () => setTab(getTabFromPath())
     window.addEventListener('popstate', handler)
     return () => window.removeEventListener('popstate', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!profileChecking) return
+    axios.get('http://localhost:8000/api/profile/', { timeout: 5000 })
+      .then(r => {
+        const hasProfile = !!(r.data?.target_role || r.data?.name)
+        if (!hasProfile) {
+          setTab('perfil')
+          history.pushState({}, '', '/perfil')
+        }
+      })
+      .catch(() => {
+        // API offline — não bloqueia o usuário
+      })
+      .finally(() => setProfileChecking(false))
   }, [])
 
   const navigate = (newTab) => {
@@ -58,6 +79,25 @@ export default function App() {
   const visibleTabs = isAdmin
     ? [...USER_TABS, { id: 'insights', label: 'Insights' }, { id: 'status', label: 'Status' }]
     : USER_TABS
+
+  if (profileChecking) {
+    return (
+      <QueryClientProvider client={qc}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: '100vh', gap: '12px', color: '#666', fontSize: '14px',
+        }}>
+          <div style={{
+            width: '20px', height: '20px',
+            border: '2px solid #eee', borderTop: '2px solid #1D9E75',
+            borderRadius: '50%', animation: 'spin 1s linear infinite',
+          }} />
+          Carregando...
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      </QueryClientProvider>
+    )
+  }
 
   return (
     <QueryClientProvider client={qc}>
