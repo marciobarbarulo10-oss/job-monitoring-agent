@@ -159,7 +159,7 @@ export default function Profile() {
       setSaved(true)
       if (isNewUser) {
         setTimeout(() => {
-          history.pushState({}, '', '/')
+          history.pushState({}, '', '/vagas')
           window.dispatchEvent(new PopStateEvent('popstate'))
         }, 1500)
       } else {

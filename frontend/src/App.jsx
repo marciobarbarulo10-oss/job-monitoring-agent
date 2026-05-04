@@ -11,9 +11,9 @@ import Profile from './pages/Profile'
 const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30000 } } })
 
 const USER_TABS = [
-  { id: 'dashboard', label: 'Dashboard' },
   { id: 'vagas', label: 'Vagas' },
   { id: 'candidaturas', label: 'Candidaturas' },
+  { id: 'dashboard', label: 'Dashboard' },
   { id: 'perfil', label: 'Meu Perfil' },
 ]
 
@@ -63,6 +63,10 @@ export default function App() {
         if (!hasProfile) {
           setTab('perfil')
           history.pushState({}, '', '/perfil')
+        } else if (window.location.pathname === '/' || window.location.pathname === '/dashboard') {
+          // Tem perfil e está na raiz/dashboard → vai para vagas (mais útil)
+          setTab('vagas')
+          history.pushState({}, '', '/vagas')
         }
       })
       .catch(() => {

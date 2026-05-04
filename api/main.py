@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api.routers import jobs, applications, dashboard, insights, profile, health, webhooks
+from auth.router import router as auth_router
 
 app = FastAPI(
     title="Job Agent API",
@@ -25,16 +26,26 @@ app = FastAPI(
 @app.on_event("startup")
 def _startup():
     from core.models import init_db
+    from auth.models import init_auth_db
     init_db()
+    init_auth_db()
+
+_cors_origins = [
+    o.strip() for o in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://localhost:5174"
+    ).split(",")
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://localhost:5174"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/auth", tags=["Autenticação"])
 app.include_router(jobs.router, prefix="/api/vagas", tags=["Vagas"])
 app.include_router(applications.router, prefix="/api/candidaturas", tags=["Candidaturas"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
