@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-05-04T09:00:01.548568",
+  "posts": {
+    "twitter": "Job Agent — busca de vagas 100% automatica!\n\n255 vagas monitoradas | 7 candidaturas | 0 entrevistas\nRecém lançado no GitHub | 28 commits\n\nOpen source: https://github.com/marciobarbarulo10-oss/job-monitoring-agent\n\n#Python #OpenSource #JobSearch #Automacao",
+    "linkedin": "Construi um agente autonomo de busca de emprego — open source e gratuito!\n\nDepois de semanas rastreando vagas manualmente, automatizei todo o processo:\n\nO que ele faz hoje (04/05/2026):\n- 255 vagas monitoradas automaticamente (LinkedIn, Gupy, Vagas.com)\n- 7 candidaturas rastreadas em kanban visual\n- 0 entrevistas geradas pelo sistema\n- Score de aderência calculado por IA para cada vaga\n- Sequência de emails automática para novos usuários\n- 0 pessoas ja cadastradas\n\nRecém lançado no GitHub | 28 commits e crescendo\n\n100% self-hosted, gratuito, sem mensalidade.\n\nhttps://github.com/marciobarbarulo10-oss/job-monitoring-agent\n\nSe isso ajudar alguem em busca de emprego, deixa uma estrela!\n\n#Python #OpenSource #Automacao #BuscaDeEmprego #IA #JobSearch",
+    "reddit": "Criei um agente Python que monitora 255 vagas automaticamente e calcula score de match com IA (Claude). Esta semana: score médio 3.1/10, 7 candidaturas.\n\nOpen source: https://github.com/marciobarbarulo10-oss/job-monitoring-agent"
+  },
+  "instructions": {
+    "twitter": "Cole o texto no Twitter/X",
+    "linkedin": "Cole no LinkedIn como novo post",
+    "reddit": "Poste em r/brdev ou r/devops_br"
+  }
+}
