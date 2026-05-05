@@ -1,18 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useContext } from 'react'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-
-const BASE = 'http://localhost:8000/api'
-
-const inputStyle = {
-  width: '100%',
-  padding: '10px 12px',
-  borderRadius: '8px',
-  border: '1px solid #ddd',
-  fontSize: '14px',
-  boxSizing: 'border-box',
-  outline: 'none',
-  fontFamily: 'inherit',
-}
+import { AuthContext } from '../components/AuthContext'
 
 const KEYWORD_SUGGESTIONS = [
   'importação', 'exportação', 'SISCOMEX', 'NCM', 'drawback',
@@ -21,6 +10,12 @@ const KEYWORD_SUGGESTIONS = [
   'DI', 'LI', 'comércio exterior', 'freight', 'armazenagem',
   'compliance', 'cold chain', 'GLP', 'farmacêutico',
 ]
+
+const inputStyle = {
+  width: '100%', padding: '10px 12px', borderRadius: '8px',
+  border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box',
+  outline: 'none', fontFamily: 'inherit',
+}
 
 function Section({ title, children }) {
   return (
@@ -57,8 +52,11 @@ function Row({ children }) {
 }
 
 export default function Profile() {
+  const navigate = useNavigate()
+  const { api: ctxApi } = useContext(AuthContext) || {}
+  const BASE = ctxApi || (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+
   const [form, setForm] = useState({
-    name: '',
     target_role: '',
     experience_years: 0,
     location: 'São Paulo, SP',
@@ -78,58 +76,83 @@ export default function Profile() {
   const [saveError, setSaveError] = useState('')
   const [uploadingCV, setUploadingCV] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState('')
+  const [loadingProfile, setLoadingProfile] = useState(true)
 
   useEffect(() => {
-    axios.get(`${BASE}/profile/`)
+    // Carrega perfil do usuário autenticado
+    axios.get(`${BASE}/auth/me`, { timeout: 5000 })
       .then(r => {
-        const d = r.data
+        const p = r.data?.profile || {}
         setForm(f => ({
           ...f,
-          name: d.name || '',
-          target_role: d.target_role || '',
-          experience_years: d.experience_years || 0,
-          location: d.location || 'São Paulo, SP',
-          summary: d.summary || '',
-          keywords: Array.isArray(d.keywords) ? d.keywords : [],
-          languages: Array.isArray(d.languages) ? d.languages : [],
-          education: d.education || '',
-          linkedin_url: d.linkedin_url || '',
-          telegram_chat_id: d.telegram_chat_id || '',
-          min_score_notify: d.min_score_notify || 6.0,
+          target_role: p.target_role || '',
+          experience_years: p.experience_years || 0,
+          location: p.location || 'São Paulo, SP',
+          summary: p.summary || '',
+          keywords: Array.isArray(p.keywords) ? p.keywords : [],
+          languages: Array.isArray(p.languages) ? p.languages : [],
+          education: p.education || '',
+          linkedin_url: p.linkedin_url || '',
+          telegram_chat_id: p.telegram_chat_id || '',
+          min_score_notify: p.min_score_notify || 6.0,
         }))
-        if (d.cv_files) setCvFiles(d.cv_files)
-        if (d.active_cv) setActiveCV(d.active_cv)
+        if (p.active_cv) setActiveCV(p.active_cv)
       })
-      .catch(() => {})
+      .catch(() => {
+        // Fallback para o endpoint legado se auth falhar
+        axios.get(`${BASE}/api/profile/`, { timeout: 5000 })
+          .then(r => {
+            const d = r.data
+            setForm(f => ({
+              ...f,
+              target_role: d.target_role || '',
+              experience_years: d.experience_years || 0,
+              location: d.location || 'São Paulo, SP',
+              summary: d.summary || '',
+              keywords: Array.isArray(d.keywords) ? d.keywords : [],
+              languages: Array.isArray(d.languages) ? d.languages : [],
+              education: d.education || '',
+              linkedin_url: d.linkedin_url || '',
+              telegram_chat_id: d.telegram_chat_id || '',
+              min_score_notify: d.min_score_notify || 6.0,
+            }))
+            if (d.active_cv) setActiveCV(d.active_cv)
+          })
+          .catch(() => {})
+      })
+      .finally(() => setLoadingProfile(false))
 
-    axios.get(`${BASE}/profile/cvs`)
+    axios.get(`${BASE}/auth/cvs`, { timeout: 5000 })
       .then(r => {
         setCvFiles(r.data.files || [])
         setActiveCV(r.data.active || '')
       })
-      .catch(() => {})
-  }, [])
+      .catch(() => {
+        axios.get(`${BASE}/api/profile/cvs`, { timeout: 5000 })
+          .then(r => {
+            setCvFiles(r.data.files || [])
+            setActiveCV(r.data.active || '')
+          })
+          .catch(() => {})
+      })
+  }, [BASE])
 
   const handleCVUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       alert('Apenas arquivos PDF são aceitos')
       return
     }
-
     if (file.size > 5 * 1024 * 1024) {
       alert('Arquivo muito grande. Máximo: 5MB')
       return
     }
-
     setUploadingCV(true)
-
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const r = await axios.post(`${BASE}/profile/upload-cv`, formData, {
+      const r = await axios.post(`${BASE}/auth/upload-cv`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 30000,
       })
@@ -142,32 +165,30 @@ export default function Profile() {
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || 'Erro ao enviar arquivo'
       alert(`Erro ao enviar: ${msg}`)
-      console.error('Upload error:', err)
     } finally {
       setUploadingCV(false)
       e.target.value = ''
     }
   }
 
-  const isNewUser = !form.target_role && !form.name
+  const isNewUser = !loadingProfile && !form.target_role
 
   const handleSave = async () => {
     setSaving(true)
     setSaveError('')
     try {
-      await axios.put(`${BASE}/profile/`, { ...form, active_cv: activeCV }, { timeout: 10000 })
+      await axios.put(`${BASE}/auth/profile`, { ...form, active_cv: activeCV }, { timeout: 10000 })
       setSaved(true)
-      if (isNewUser) {
-        setTimeout(() => {
-          history.pushState({}, '', '/vagas')
-          window.dispatchEvent(new PopStateEvent('popstate'))
-        }, 1500)
-      } else {
-        setTimeout(() => setSaved(false), 3000)
-      }
+      setTimeout(() => {
+        if (isNewUser) {
+          navigate('/vagas')
+        } else {
+          setSaved(false)
+        }
+      }, 1500)
     } catch (e) {
       if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
-        setSaveError('Tempo esgotado. Verifique se o servidor esta rodando.')
+        setSaveError('Tempo esgotado. Verifique se o servidor está rodando.')
       } else if (e.response) {
         setSaveError(`Erro ${e.response.status}: ${e.response.data?.detail || 'Tente novamente'}`)
       } else {
@@ -211,18 +232,13 @@ export default function Profile() {
         }}>
           <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>Bem-vindo ao Job Agent!</div>
           <div style={{ fontSize: '14px', opacity: 0.9, lineHeight: 1.6 }}>
-            Configure seu perfil para que o agente encontre as vagas certas para voce.
-            Leva menos de 2 minutos e faz toda a diferenca no score de aderencia.
+            Configure seu perfil para que o agente encontre as vagas certas para você.
+            Leva menos de 2 minutos e faz toda a diferença no score de aderência.
           </div>
         </div>
       )}
 
       <Section title="Dados básicos">
-        <Field label="Nome completo">
-          <input style={inputStyle} value={form.name}
-            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder="Seu nome completo" />
-        </Field>
         <Field label="Cargo alvo *">
           <input style={inputStyle} value={form.target_role}
             onChange={e => setForm(f => ({ ...f, target_role: e.target.value }))}
@@ -261,7 +277,7 @@ export default function Profile() {
                 borderRadius: '8px', marginBottom: '8px',
                 border: activeCV === cv ? '2px solid #1D9E75' : '1px solid #eee',
               }}>
-                <span style={{ fontSize: '18px' }}>PDF</span>
+                <span style={{ fontSize: '13px', color: '#888' }}>PDF</span>
                 <span style={{ flex: 1, fontSize: '13px' }}>{cv}</span>
                 {activeCV === cv ? (
                   <span style={{
@@ -295,27 +311,18 @@ export default function Profile() {
           background: uploadSuccess ? '#f0faf6' : 'white',
           transition: 'all 0.2s',
         }}>
-          <span style={{ fontSize: '18px' }}>
+          <span style={{ fontSize: '13px', color: '#888' }}>
             {uploadingCV ? '...' : uploadSuccess ? 'OK' : 'PDF'}
           </span>
-          {uploadingCV
-            ? 'Enviando...'
-            : uploadSuccess
-            ? `${uploadSuccess} enviado!`
-            : 'Enviar novo curriculo (PDF)'}
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={handleCVUpload}
-            disabled={uploadingCV}
-            style={{ display: 'none' }}
-          />
+          {uploadingCV ? 'Enviando...' : uploadSuccess ? `${uploadSuccess} enviado!` : 'Enviar novo currículo (PDF)'}
+          <input type="file" accept=".pdf" onChange={handleCVUpload}
+            disabled={uploadingCV} style={{ display: 'none' }} />
         </label>
       </Section>
 
       <Section title="Habilidades e palavras-chave">
         <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
-          Palavras-chave que aparecem na sua área. O agente usa isso para calcular o score de aderência de cada vaga.
+          Palavras-chave da sua área. O agente usa para calcular o score de aderência de cada vaga.
         </p>
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
@@ -382,7 +389,7 @@ export default function Profile() {
         )}
       </Section>
 
-      <Section title="Integracoes">
+      <Section title="Integrações">
         <Field label="URL do LinkedIn">
           <input style={inputStyle} value={form.linkedin_url}
             onChange={e => setForm(f => ({ ...f, linkedin_url: e.target.value }))}
@@ -396,14 +403,14 @@ export default function Profile() {
             Para obter: abra o Telegram, busque @userinfobot e envie /start
           </span>
         </Field>
-        <Field label={`Score minimo para notificar: ${form.min_score_notify}/10`}>
+        <Field label={`Score mínimo para notificar: ${form.min_score_notify}/10`}>
           <input type="range" min="4" max="9" step="0.5"
             value={form.min_score_notify}
             onChange={e => setForm(f => ({ ...f, min_score_notify: parseFloat(e.target.value) }))}
             style={{ width: '100%' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999' }}>
             <span>4 — Mais vagas</span>
-            <span>9 — So as melhores</span>
+            <span>9 — Só as melhores</span>
           </div>
         </Field>
       </Section>
@@ -415,11 +422,7 @@ export default function Profile() {
           color: 'white', border: 'none', borderRadius: '10px',
           fontSize: '15px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
           transition: 'background 0.2s',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
         }}>
-        {saving && (
-          <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-        )}
         {saving ? 'Salvando...' : saved ? 'Perfil salvo!' : 'Salvar perfil'}
       </button>
 

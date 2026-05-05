@@ -1,138 +1,135 @@
 import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import axios from 'axios'
+
+import { AuthContext } from './components/AuthContext'
+import { Navbar } from './components/Navbar'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
 import Jobs from './pages/Jobs'
 import Applications from './pages/Applications'
+import Profile from './pages/Profile'
 import Insights from './pages/Insights'
 import Status from './pages/Status'
-import Profile from './pages/Profile'
 
-const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 30000 } } })
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
+})
 
-const USER_TABS = [
-  { id: 'vagas', label: 'Vagas' },
-  { id: 'candidaturas', label: 'Candidaturas' },
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'perfil', label: 'Meu Perfil' },
-]
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const isAdmin = new URLSearchParams(window.location.search).get('admin') === '1'
-
-const PATH_TO_TAB = {
-  '/': 'dashboard',
-  '/dashboard': 'dashboard',
-  '/vagas': 'vagas',
-  '/candidaturas': 'candidaturas',
-  '/perfil': 'perfil',
-  '/insights': 'insights',
-  '/status': 'status',
-}
-
-const TAB_TO_PATH = {
-  dashboard: '/',
-  vagas: '/vagas',
-  candidaturas: '/candidaturas',
-  perfil: '/perfil',
-  insights: '/insights',
-  status: '/status',
-}
-
-function getTabFromPath() {
-  return PATH_TO_TAB[window.location.pathname] || 'dashboard'
-}
-
-export default function App() {
-  const [tab, setTab] = useState(getTabFromPath)
-  const [profileChecking, setProfileChecking] = useState(
-    // só verifica na rota raiz para não bloquear quem acessa /perfil direto
-    window.location.pathname === '/' || window.location.pathname === '/dashboard'
+function Spinner() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '100vh', gap: '12px', color: '#666', fontSize: '14px',
+    }}>
+      <div style={{
+        width: '18px', height: '18px',
+        border: '2px solid #eee', borderTop: '2px solid #1D9E75',
+        borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+      }} />
+      Carregando...
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
   )
+}
+
+function AppRouter() {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
-    const handler = () => setTab(getTabFromPath())
-    window.addEventListener('popstate', handler)
-    return () => window.removeEventListener('popstate', handler)
-  }, [])
-
-  useEffect(() => {
-    if (!profileChecking) return
-    axios.get('http://localhost:8000/api/profile/', { timeout: 5000 })
+    const token = localStorage.getItem('job_agent_token')
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    axios.get(`${API}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 5000,
+    })
       .then(r => {
-        const hasProfile = !!(r.data?.target_role || r.data?.name)
-        if (!hasProfile) {
-          setTab('perfil')
-          history.pushState({}, '', '/perfil')
-        } else if (window.location.pathname === '/' || window.location.pathname === '/dashboard') {
-          // Tem perfil e está na raiz/dashboard → vai para vagas (mais útil)
-          setTab('vagas')
-          history.pushState({}, '', '/vagas')
-        }
+        setUser(r.data.user)
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
       })
       .catch(() => {
-        // API offline — não bloqueia o usuário
+        localStorage.removeItem('job_agent_token')
+        delete axios.defaults.headers.common['Authorization']
       })
-      .finally(() => setProfileChecking(false))
+      .finally(() => setLoading(false))
   }, [])
 
-  const navigate = (newTab) => {
-    setTab(newTab)
-    history.pushState({}, '', TAB_TO_PATH[newTab] || '/')
+  const login = (token, userData, nextStep) => {
+    localStorage.setItem('job_agent_token', token)
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    setUser(userData)
+    navigate(nextStep === 'onboarding' ? '/onboarding' : '/vagas', { replace: true })
   }
 
-  const visibleTabs = isAdmin
-    ? [...USER_TABS, { id: 'insights', label: 'Insights' }, { id: 'status', label: 'Status' }]
-    : USER_TABS
+  const logout = () => {
+    axios.post(`${API}/auth/logout`).catch(() => {})
+    localStorage.removeItem('job_agent_token')
+    delete axios.defaults.headers.common['Authorization']
+    setUser(null)
+    navigate('/login', { replace: true })
+  }
 
-  if (profileChecking) {
-    return (
-      <QueryClientProvider client={qc}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          height: '100vh', gap: '12px', color: '#666', fontSize: '14px',
-        }}>
-          <div style={{
-            width: '20px', height: '20px',
-            border: '2px solid #eee', borderTop: '2px solid #1D9E75',
-            borderRadius: '50%', animation: 'spin 1s linear infinite',
-          }} />
-          Carregando...
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-        </div>
-      </QueryClientProvider>
-    )
+  if (loading) return <Spinner />
+
+  const publicRoutes = ['/login', '/register']
+  const isPublic = publicRoutes.includes(location.pathname)
+
+  if (!user && !isPublic) {
+    return <Navigate to="/login" replace />
   }
 
   return (
-    <QueryClientProvider client={qc}>
-      <div className="min-h-screen bg-gray-50">
-        <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-6 shadow-sm">
-          <span className="font-bold text-lg text-indigo-700">Job Agent</span>
-          <div className="flex gap-1">
-            {visibleTabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => navigate(t.id)}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  tab === t.id
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </nav>
-        <main className="max-w-6xl mx-auto px-6 py-6">
-          {tab === 'dashboard' && <Dashboard />}
-          {tab === 'vagas' && <Jobs />}
-          {tab === 'candidaturas' && <Applications />}
-          {tab === 'perfil' && <Profile />}
-          {tab === 'insights' && <Insights />}
-          {tab === 'status' && <Status />}
-        </main>
-      </div>
+    <AuthContext.Provider value={{ user, login, logout, api: API }}>
+      <Routes>
+        {/* Rotas públicas */}
+        <Route path="/login"    element={user ? <Navigate to="/vagas" replace /> : <Login />} />
+        <Route path="/register" element={user ? <Navigate to="/vagas" replace /> : <Register />} />
+
+        {/* Onboarding — sem navbar */}
+        <Route path="/onboarding" element={user ? <Onboarding /> : <Navigate to="/login" replace />} />
+
+        {/* Rotas protegidas — com navbar */}
+        <Route path="*" element={
+          user ? (
+            <div className="min-h-screen bg-gray-50">
+              <Navbar onLogout={logout} userName={user.name} />
+              <main className="max-w-6xl mx-auto px-6 py-6">
+                <Routes>
+                  <Route path="/vagas"        element={<Jobs />} />
+                  <Route path="/candidaturas" element={<Applications />} />
+                  <Route path="/dashboard"    element={<Dashboard />} />
+                  <Route path="/perfil"       element={<Profile />} />
+                  <Route path="/admin/insights" element={<Insights />} />
+                  <Route path="/admin/status"   element={<Status />} />
+                  <Route path="/"             element={<Navigate to="/vagas" replace />} />
+                  <Route path="*"             element={<Navigate to="/vagas" replace />} />
+                </Routes>
+              </main>
+            </div>
+          ) : <Navigate to="/login" replace />
+        } />
+      </Routes>
+    </AuthContext.Provider>
+  )
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppRouter />
+      </BrowserRouter>
     </QueryClientProvider>
   )
 }
