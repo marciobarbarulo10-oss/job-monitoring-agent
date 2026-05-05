@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE = 'http://localhost:8000/api'
+const BASE = `${import.meta.env.VITE_API_URL || window.location.origin}/api`
 
 export const api = {
   dashboard: () => axios.get(`${BASE}/dashboard/summary`).then(r => r.data),
@@ -14,7 +14,7 @@ export const api = {
   marketReport: () => axios.get(`${BASE}/insights/market`).then(r => r.data),
   agentLogs: () => axios.get(`${BASE}/insights/agent-logs`).then(r => r.data),
   profile: () => axios.get(`${BASE}/profile/`).then(r => r.data),
-  health: () => axios.get('http://localhost:8000/health/').then(r => r.data),
+  health: () => axios.get(`${import.meta.env.VITE_API_URL || window.location.origin}/health/`).then(r => r.data),
   marketingStats: () => axios.get(`${BASE}/dashboard/marketing-stats`).then(r => r.data),
   growthStats: () => axios.get(`${BASE}/dashboard/growth-stats`).then(r => r.data),
 }

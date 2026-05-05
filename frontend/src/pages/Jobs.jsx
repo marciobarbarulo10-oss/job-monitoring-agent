@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api'
 
-const BASE = 'http://localhost:8000/api'
+const BASE = `${import.meta.env.VITE_API_URL || window.location.origin}/api`
 
 const GRADE_STYLE = {
   A: 'bg-green-100 text-green-700',

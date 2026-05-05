@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { AuthContext } from '../components/AuthContext'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || window.location.origin
 
 const inputStyle = {
   width: '100%', padding: '10px 12px', borderRadius: '8px',

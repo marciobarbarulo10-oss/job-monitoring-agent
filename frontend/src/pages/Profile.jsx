@@ -1,72 +1,42 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../components/AuthContext'
 import axios from 'axios'
-import { AuthContext } from '../components/AuthContext'
+
+const API = import.meta.env.VITE_API_URL || window.location.origin
+
+function calcCompletion(form, cvFiles) {
+  const checks = [
+    !!form.name,
+    !!form.target_role,
+    form.experience_years > 0,
+    form.keywords.length >= 5,
+    cvFiles.length > 0,
+    !!form.summary,
+    !!form.linkedin_url,
+  ]
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100)
+}
 
 const KEYWORD_SUGGESTIONS = [
   'importação', 'exportação', 'SISCOMEX', 'NCM', 'drawback',
-  'Incoterms', 'supply chain', 'logística', 'ANVISA',
+  'Incoterms', 'supply chain', 'logística', 'ANVISA', 'DI', 'LI',
   'Receita Federal', 'despacho aduaneiro', 'licença de importação',
-  'DI', 'LI', 'comércio exterior', 'freight', 'armazenagem',
-  'compliance', 'cold chain', 'GLP', 'farmacêutico',
+  'comércio exterior', 'freight', 'armazenagem', 'compliance',
+  'cold chain', 'GLP', 'farmacêutico', 'SAP', 'Oracle',
 ]
 
-const inputStyle = {
-  width: '100%', padding: '10px 12px', borderRadius: '8px',
-  border: '1px solid #ddd', fontSize: '14px', boxSizing: 'border-box',
-  outline: 'none', fontFamily: 'inherit',
-}
-
-function Section({ title, children }) {
-  return (
-    <div style={{ marginBottom: '32px' }}>
-      <h2 style={{
-        fontSize: '14px', fontWeight: 600, color: '#333',
-        marginBottom: '16px', paddingBottom: '8px',
-        borderBottom: '1px solid #eee',
-      }}>
-        {title}
-      </h2>
-      {children}
-    </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <div style={{ marginBottom: '14px' }}>
-      <label style={{ fontSize: '13px', fontWeight: 500, display: 'block', marginBottom: '6px', color: '#444' }}>
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}
-
-function Row({ children }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-      {children}
-    </div>
-  )
-}
-
 export default function Profile() {
+  const { user } = useAuth() || {}
   const navigate = useNavigate()
-  const { api: ctxApi } = useContext(AuthContext) || {}
-  const BASE = ctxApi || (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+  const token = localStorage.getItem('job_agent_token')
 
   const [form, setForm] = useState({
-    target_role: '',
-    experience_years: 0,
-    location: 'São Paulo, SP',
-    summary: '',
-    keywords: [],
-    languages: [],
-    education: '',
-    linkedin_url: '',
-    telegram_chat_id: '',
-    min_score_notify: 6.0,
+    name: '', target_role: '', experience_years: 0,
+    location: 'São Paulo, SP', summary: '',
+    keywords: [], languages: ['Português'],
+    education: '', linkedin_url: '',
+    telegram_chat_id: '', min_score_notify: 6.0,
   })
   const [cvFiles, setCvFiles] = useState([])
   const [activeCV, setActiveCV] = useState('')
@@ -75,366 +45,446 @@ export default function Profile() {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [uploadingCV, setUploadingCV] = useState(false)
-  const [uploadSuccess, setUploadSuccess] = useState('')
-  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [uploadMsg, setUploadMsg] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
 
   useEffect(() => {
-    // Carrega perfil do usuário autenticado
-    axios.get(`${BASE}/auth/me`, { timeout: 5000 })
-      .then(r => {
-        const p = r.data?.profile || {}
+    Promise.all([
+      axios.get(`${API}/auth/me`, { headers, timeout: 8000 }),
+      axios.get(`${API}/auth/cvs`, { headers, timeout: 8000 }),
+    ])
+      .then(([meRes, cvsRes]) => {
+        const p = meRes.data.profile || {}
         setForm(f => ({
           ...f,
+          name: meRes.data.user?.name || '',
           target_role: p.target_role || '',
           experience_years: p.experience_years || 0,
           location: p.location || 'São Paulo, SP',
           summary: p.summary || '',
           keywords: Array.isArray(p.keywords) ? p.keywords : [],
-          languages: Array.isArray(p.languages) ? p.languages : [],
+          languages: Array.isArray(p.languages) ? p.languages : ['Português'],
           education: p.education || '',
           linkedin_url: p.linkedin_url || '',
           telegram_chat_id: p.telegram_chat_id || '',
           min_score_notify: p.min_score_notify || 6.0,
         }))
-        if (p.active_cv) setActiveCV(p.active_cv)
+        setCvFiles(cvsRes.data.files || [])
+        setActiveCV(cvsRes.data.active || '')
       })
-      .catch(() => {
-        // Fallback para o endpoint legado se auth falhar
-        axios.get(`${BASE}/api/profile/`, { timeout: 5000 })
-          .then(r => {
-            const d = r.data
-            setForm(f => ({
-              ...f,
-              target_role: d.target_role || '',
-              experience_years: d.experience_years || 0,
-              location: d.location || 'São Paulo, SP',
-              summary: d.summary || '',
-              keywords: Array.isArray(d.keywords) ? d.keywords : [],
-              languages: Array.isArray(d.languages) ? d.languages : [],
-              education: d.education || '',
-              linkedin_url: d.linkedin_url || '',
-              telegram_chat_id: d.telegram_chat_id || '',
-              min_score_notify: d.min_score_notify || 6.0,
-            }))
-            if (d.active_cv) setActiveCV(d.active_cv)
-          })
-          .catch(() => {})
-      })
-      .finally(() => setLoadingProfile(false))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
-    axios.get(`${BASE}/auth/cvs`, { timeout: 5000 })
-      .then(r => {
-        setCvFiles(r.data.files || [])
-        setActiveCV(r.data.active || '')
-      })
-      .catch(() => {
-        axios.get(`${BASE}/api/profile/cvs`, { timeout: 5000 })
-          .then(r => {
-            setCvFiles(r.data.files || [])
-            setActiveCV(r.data.active || '')
-          })
-          .catch(() => {})
-      })
-  }, [BASE])
+  const isNewUser = !form.target_role && !loading
+  const completion = calcCompletion(form, cvFiles)
+
+  const handleSave = async () => {
+    if (!form.target_role.trim()) {
+      setSaveError('Preencha o cargo alvo antes de salvar.')
+      return
+    }
+    setSaving(true)
+    setSaveError('')
+    try {
+      await axios.put(`${API}/auth/profile`, { ...form, active_cv: activeCV }, { headers, timeout: 10000 })
+      setSaved(true)
+      setTimeout(() => {
+        setSaved(false)
+        if (isNewUser) navigate('/vagas')
+      }, 1500)
+    } catch (e) {
+      setSaveError(
+        e.code === 'ECONNABORTED'
+          ? 'Tempo esgotado. Verifique a conexão.'
+          : e.response?.data?.detail || 'Erro ao salvar. Tente novamente.'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleCVUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-      alert('Apenas arquivos PDF são aceitos')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Arquivo muito grande. Máximo: 5MB')
+      setUploadMsg('Apenas arquivos PDF são aceitos')
       return
     }
     setUploadingCV(true)
+    setUploadMsg('')
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const r = await axios.post(`${BASE}/auth/upload-cv`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await axios.post(`${API}/auth/upload-cv`, fd, {
+        headers: { ...headers, 'Content-Type': 'multipart/form-data' },
         timeout: 30000,
       })
-      if (r.data.success) {
-        setCvFiles(prev => prev.includes(r.data.filename) ? prev : [...prev, r.data.filename])
-        if (!activeCV) setActiveCV(r.data.filename)
-        setUploadSuccess(r.data.filename)
-        setTimeout(() => setUploadSuccess(''), 3000)
-      }
+      const name = r.data.filename
+      setCvFiles(prev => prev.includes(name) ? prev : [...prev, name])
+      if (!activeCV) setActiveCV(name)
+      setUploadMsg(`ok:${name} enviado com sucesso`)
+      setTimeout(() => setUploadMsg(''), 4000)
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'Erro ao enviar arquivo'
-      alert(`Erro ao enviar: ${msg}`)
+      setUploadMsg(`err:${err.response?.data?.detail || 'Erro ao enviar arquivo'}`)
     } finally {
       setUploadingCV(false)
       e.target.value = ''
     }
   }
 
-  const isNewUser = !loadingProfile && !form.target_role
-
-  const handleSave = async () => {
-    setSaving(true)
-    setSaveError('')
-    try {
-      await axios.put(`${BASE}/auth/profile`, { ...form, active_cv: activeCV }, { timeout: 10000 })
-      setSaved(true)
-      setTimeout(() => {
-        if (isNewUser) {
-          navigate('/vagas')
-        } else {
-          setSaved(false)
-        }
-      }, 1500)
-    } catch (e) {
-      if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
-        setSaveError('Tempo esgotado. Verifique se o servidor está rodando.')
-      } else if (e.response) {
-        setSaveError(`Erro ${e.response.status}: ${e.response.data?.detail || 'Tente novamente'}`)
-      } else {
-        setSaveError('Servidor offline. Inicie com: python -m uvicorn api.main:app --reload --port 8000')
-      }
-    } finally {
-      setSaving(false)
+  const addKeyword = (kw) => {
+    const k = (kw || keywordInput).trim()
+    if (k && !form.keywords.includes(k)) {
+      setForm(f => ({ ...f, keywords: [...f.keywords, k] }))
     }
+    if (!kw) setKeywordInput('')
   }
 
-  const addKeyword = () => {
-    const kw = keywordInput.trim()
-    if (kw && !form.keywords.includes(kw)) {
-      setForm(f => ({ ...f, keywords: [...f.keywords, kw] }))
-    }
-    setKeywordInput('')
-  }
+  const removeKeyword = (kw) =>
+    setForm(f => ({ ...f, keywords: f.keywords.filter(k => k !== kw) }))
 
-  const removeKeyword = (kw) => setForm(f => ({ ...f, keywords: f.keywords.filter(k => k !== kw) }))
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '60vh', gap: '12px', color: '#888', fontSize: '14px' }}>
+      <div style={{ width: '18px', height: '18px', border: '2px solid #eee',
+        borderTop: '2px solid #1D9E75', borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite' }} />
+      Carregando perfil...
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
 
-  const toggleSuggestion = (kw) => {
-    if (form.keywords.includes(kw)) {
-      removeKeyword(kw)
-    } else {
-      setForm(f => ({ ...f, keywords: [...f.keywords, kw] }))
-    }
-  }
+  const uploadOk = uploadMsg.startsWith('ok:')
+  const uploadErr = uploadMsg.startsWith('err:')
+  const uploadText = uploadMsg.slice(3)
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '32px 24px' }}>
-      <h1 style={{ fontSize: '22px', fontWeight: 600, marginBottom: '8px' }}>Meu Perfil</h1>
-      <p style={{ fontSize: '13px', color: '#666', marginBottom: '24px' }}>
-        Suas informações são usadas para calcular o score de cada vaga e gerar cartas de apresentação personalizadas.
-      </p>
+    <div style={{ maxWidth: '680px', margin: '0 auto', padding: '32px 20px 60px' }}>
 
       {isNewUser && (
         <div style={{
-          background: 'linear-gradient(135deg, #1D9E75, #0d7a5a)',
-          borderRadius: '12px', padding: '20px 24px',
-          marginBottom: '32px', color: 'white',
+          background: 'linear-gradient(135deg,#1D9E75,#0d7a5a)',
+          borderRadius: '12px', padding: '20px 24px', marginBottom: '28px', color: 'white',
         }}>
-          <div style={{ fontSize: '20px', fontWeight: 600, marginBottom: '8px' }}>Bem-vindo ao Job Agent!</div>
+          <div style={{ fontSize: '20px', fontWeight: 500, marginBottom: '6px' }}>
+            Bem-vindo ao Job Agent!
+          </div>
           <div style={{ fontSize: '14px', opacity: 0.9, lineHeight: 1.6 }}>
             Configure seu perfil para que o agente encontre as vagas certas para você.
-            Leva menos de 2 minutos e faz toda a diferença no score de aderência.
+            Leva menos de 3 minutos e faz toda a diferença no score de cada vaga.
           </div>
         </div>
       )}
 
-      <Section title="Dados básicos">
-        <Field label="Cargo alvo *">
-          <input style={inputStyle} value={form.target_role}
-            onChange={e => setForm(f => ({ ...f, target_role: e.target.value }))}
-            placeholder="Ex: Analista de Importação Sênior" />
-        </Field>
-        <Row>
+      {/* Header com barra de progresso */}
+      <div style={{ marginBottom: '32px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', marginBottom: '10px' }}>
+          <h1 style={{ fontSize: '22px', fontWeight: 500, margin: 0 }}>Meu Perfil</h1>
+          <span style={{
+            fontSize: '13px', fontWeight: 500,
+            color: completion >= 80 ? '#1D9E75' : completion >= 50 ? '#BA7517' : '#888',
+          }}>
+            {completion}% completo
+          </span>
+        </div>
+        <div style={{ height: '4px', background: '#eee', borderRadius: '2px' }}>
+          <div style={{
+            height: '100%', borderRadius: '2px',
+            background: completion >= 80 ? '#1D9E75' : completion >= 50 ? '#F39C12' : '#ddd',
+            width: `${completion}%`, transition: 'width 0.4s ease',
+          }} />
+        </div>
+        {completion < 80 && (
+          <div style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>
+            {completion < 30
+              ? 'Preencha os campos básicos para começar'
+              : completion < 60
+              ? 'Adicione mais keywords e suba seu currículo'
+              : 'Quase lá — adicione seu LinkedIn e resumo profissional'}
+          </div>
+        )}
+      </div>
+
+      {/* SEÇÃO 1 — Dados básicos */}
+      <Section title="Dados básicos" required>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <Field label="Nome completo">
+            <Input value={form.name}
+              onChange={v => setForm(f => ({ ...f, name: v }))}
+              placeholder="Seu nome completo" />
+          </Field>
+          <Field label="Cargo alvo *">
+            <Input value={form.target_role}
+              onChange={v => setForm(f => ({ ...f, target_role: v }))}
+              placeholder="Ex: Analista de Importação Sênior"
+              highlight={!form.target_role} />
+          </Field>
           <Field label="Anos de experiência">
-            <input style={inputStyle} type="number" min="0" max="50"
+            <Input type="number" min="0" max="50"
               value={form.experience_years}
-              onChange={e => setForm(f => ({ ...f, experience_years: parseInt(e.target.value) || 0 }))} />
+              onChange={v => setForm(f => ({ ...f, experience_years: parseInt(v) || 0 }))}
+              placeholder="0" />
           </Field>
           <Field label="Localização">
-            <input style={inputStyle} value={form.location}
-              onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+            <Input value={form.location}
+              onChange={v => setForm(f => ({ ...f, location: v }))}
               placeholder="Ex: São Paulo, SP" />
           </Field>
-        </Row>
+        </div>
         <Field label="Resumo profissional">
-          <textarea style={{ ...inputStyle, resize: 'vertical' }} rows={3} value={form.summary}
+          <textarea
+            value={form.summary}
             onChange={e => setForm(f => ({ ...f, summary: e.target.value }))}
-            placeholder="Descreva sua experiência e objetivos em 2-3 frases..." />
+            placeholder="Descreva sua experiência e objetivos em 2-3 frases..."
+            rows={3}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px',
+              border: '1px solid #ddd', fontSize: '14px', resize: 'vertical',
+              boxSizing: 'border-box', fontFamily: 'inherit' }}
+          />
         </Field>
       </Section>
 
-      <Section title="Meus currículos">
-        <p style={{ fontSize: '13px', color: '#666', marginBottom: '16px' }}>
-          Suba diferentes versões do seu CV (PDF). O currículo ativo é usado para calcular o score e gerar cartas de apresentação.
+      {/* SEÇÃO 2 — Currículo */}
+      <Section title="Currículo (PDF)">
+        <p style={{ fontSize: '13px', color: '#666', margin: '0 0 14px', lineHeight: 1.6 }}>
+          O currículo ativo é usado para calcular o score de aderência e gerar
+          cartas de apresentação personalizadas por vaga.
         </p>
 
-        {cvFiles.length > 0 && (
-          <div style={{ marginBottom: '16px' }}>
-            {cvFiles.map(cv => (
-              <div key={cv} style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '10px 14px', background: '#f9f9f9',
-                borderRadius: '8px', marginBottom: '8px',
-                border: activeCV === cv ? '2px solid #1D9E75' : '1px solid #eee',
-              }}>
-                <span style={{ fontSize: '13px', color: '#888' }}>PDF</span>
-                <span style={{ flex: 1, fontSize: '13px' }}>{cv}</span>
-                {activeCV === cv ? (
-                  <span style={{
-                    fontSize: '11px', background: '#E8F5E9', color: '#1D9E75',
-                    padding: '2px 8px', borderRadius: '99px', fontWeight: 500,
-                  }}>
-                    Ativo
-                  </span>
-                ) : (
-                  <button onClick={() => setActiveCV(cv)}
-                    style={{
-                      fontSize: '11px', background: 'transparent', border: '1px solid #ddd',
-                      borderRadius: '6px', padding: '4px 10px', cursor: 'pointer',
-                    }}>
-                    Usar este
-                  </button>
-                )}
-              </div>
-            ))}
+        {cvFiles.map(cv => (
+          <div key={cv} style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '10px 14px', marginBottom: '8px', borderRadius: '8px',
+            border: activeCV === cv ? '1.5px solid #1D9E75' : '1px solid #eee',
+            background: activeCV === cv ? '#f0faf6' : '#fafafa',
+          }}>
+            <span style={{ fontSize: '20px' }}>📄</span>
+            <span style={{ flex: 1, fontSize: '13px', color: '#333' }}>{cv}</span>
+            {activeCV === cv
+              ? <span style={{ fontSize: '11px', background: '#1D9E75', color: 'white',
+                  padding: '2px 8px', borderRadius: '99px', fontWeight: 500 }}>
+                  ✓ Ativo
+                </span>
+              : <button onClick={() => setActiveCV(cv)}
+                  style={{ fontSize: '11px', padding: '4px 10px', border: '1px solid #ddd',
+                    borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#555' }}>
+                  Usar este
+                </button>
+            }
           </div>
-        )}
+        ))}
 
         <label style={{
           display: 'flex', alignItems: 'center', gap: '10px',
           padding: '12px 16px',
-          border: `2px dashed ${uploadSuccess ? '#1D9E75' : '#ddd'}`,
+          border: `2px dashed ${uploadingCV ? '#1D9E75' : '#ddd'}`,
           borderRadius: '8px',
           cursor: uploadingCV ? 'not-allowed' : 'pointer',
           fontSize: '13px',
-          color: uploadSuccess ? '#1D9E75' : '#666',
-          background: uploadSuccess ? '#f0faf6' : 'white',
+          color: uploadingCV ? '#1D9E75' : '#888',
+          background: uploadingCV ? '#f0faf6' : 'white',
           transition: 'all 0.2s',
         }}>
-          <span style={{ fontSize: '13px', color: '#888' }}>
-            {uploadingCV ? '...' : uploadSuccess ? 'OK' : 'PDF'}
-          </span>
-          {uploadingCV ? 'Enviando...' : uploadSuccess ? `${uploadSuccess} enviado!` : 'Enviar novo currículo (PDF)'}
+          <span style={{ fontSize: '20px' }}>{uploadingCV ? '⏳' : '⬆️'}</span>
+          {uploadingCV ? 'Enviando...' : 'Clique para enviar um PDF'}
           <input type="file" accept=".pdf" onChange={handleCVUpload}
             disabled={uploadingCV} style={{ display: 'none' }} />
         </label>
-      </Section>
 
-      <Section title="Habilidades e palavras-chave">
-        <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>
-          Palavras-chave da sua área. O agente usa para calcular o score de aderência de cada vaga.
-        </p>
-
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-          <input
-            style={{ ...inputStyle, flex: 1 }}
-            value={keywordInput}
-            onChange={e => setKeywordInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
-            placeholder="Digite uma habilidade e pressione Enter"
-          />
-          <button onClick={addKeyword}
-            style={{
-              padding: '8px 16px', background: '#1D9E75', color: 'white',
-              border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
-            }}>
-            + Add
-          </button>
-        </div>
-
-        <div style={{ marginBottom: '12px' }}>
-          <span style={{ fontSize: '11px', color: '#999', marginBottom: '6px', display: 'block' }}>
-            Sugestões para sua área:
-          </span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {KEYWORD_SUGGESTIONS.map(kw => {
-              const isSelected = form.keywords.includes(kw)
-              return (
-                <span key={kw} onClick={() => toggleSuggestion(kw)}
-                  style={{
-                    padding: '5px 12px', borderRadius: '99px', fontSize: '12px',
-                    cursor: 'pointer', userSelect: 'none',
-                    transition: 'all 0.15s ease',
-                    background: isSelected ? '#1D9E75' : '#f0f0f0',
-                    color: isSelected ? 'white' : '#555',
-                    border: isSelected ? '2px solid #1D9E75' : '2px solid transparent',
-                    fontWeight: isSelected ? 500 : 400,
-                  }}>
-                  {isSelected ? '✓ ' : ''}{kw}
-                </span>
-              )
-            })}
-          </div>
-          {form.keywords.length > 0 && (
-            <div style={{ marginTop: '10px', fontSize: '12px', color: '#1D9E75', fontWeight: 500 }}>
-              {form.keywords.length} {form.keywords.length === 1 ? 'habilidade selecionada' : 'habilidades selecionadas'}
-            </div>
-          )}
-        </div>
-
-        {form.keywords.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {form.keywords.map(kw => (
-              <span key={kw} style={{
-                padding: '4px 10px', background: '#E8F5E9', color: '#1D9E75',
-                borderRadius: '99px', fontSize: '12px',
-                display: 'flex', alignItems: 'center', gap: '6px',
-              }}>
-                {kw}
-                <span onClick={() => removeKeyword(kw)}
-                  style={{ cursor: 'pointer', opacity: 0.7, fontWeight: 'bold' }}>x</span>
-              </span>
-            ))}
+        {uploadMsg && (
+          <div style={{
+            marginTop: '8px', fontSize: '12px', padding: '8px 12px', borderRadius: '6px',
+            background: uploadOk ? '#f0faf6' : '#fff0f0',
+            color: uploadOk ? '#1D9E75' : '#C0392B',
+          }}>
+            {uploadOk ? `✅ ${uploadText}` : `❌ ${uploadText}`}
           </div>
         )}
       </Section>
 
-      <Section title="Integrações">
-        <Field label="URL do LinkedIn">
-          <input style={inputStyle} value={form.linkedin_url}
-            onChange={e => setForm(f => ({ ...f, linkedin_url: e.target.value }))}
+      {/* SEÇÃO 3 — Keywords */}
+      <Section title="Habilidades e palavras-chave">
+        <p style={{ fontSize: '13px', color: '#666', margin: '0 0 12px', lineHeight: 1.6 }}>
+          O agente usa essas palavras para calcular o score de cada vaga.{' '}
+          <strong>Quanto mais preciso, melhor o score.</strong>
+          {form.keywords.length < 5 && (
+            <span style={{ color: '#BA7517' }}> Adicione pelo menos 5.</span>
+          )}
+        </p>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input
+            value={keywordInput}
+            onChange={e => setKeywordInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
+            placeholder="Digite uma habilidade e pressione Enter"
+            style={{ flex: 1, padding: '10px 12px', borderRadius: '8px',
+              border: '1px solid #ddd', fontSize: '14px' }}
+          />
+          <button onClick={() => addKeyword()}
+            style={{ padding: '10px 18px', background: '#1D9E75', color: 'white',
+              border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>
+            + Add
+          </button>
+        </div>
+
+        <div style={{ marginBottom: '14px' }}>
+          <div style={{ fontSize: '12px', color: '#999', marginBottom: '8px' }}>
+            Sugestões para sua área — clique para adicionar:
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {KEYWORD_SUGGESTIONS.map(kw => {
+              const selected = form.keywords.includes(kw)
+              return (
+                <span key={kw}
+                  onClick={() => selected ? removeKeyword(kw) : addKeyword(kw)}
+                  style={{
+                    padding: '4px 12px', borderRadius: '99px', fontSize: '12px',
+                    cursor: 'pointer', userSelect: 'none', transition: 'all 0.15s',
+                    background: selected ? '#1D9E75' : '#f0f0f0',
+                    color: selected ? 'white' : '#555',
+                    fontWeight: selected ? 500 : 400,
+                  }}>
+                  {selected ? '✓ ' : ''}{kw}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+
+        {form.keywords.length > 0 && (
+          <>
+            <div style={{ fontSize: '12px', color: '#1D9E75', fontWeight: 500, marginBottom: '8px' }}>
+              {form.keywords.length} {form.keywords.length === 1 ? 'habilidade' : 'habilidades'} selecionadas
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {form.keywords.map(kw => (
+                <span key={kw} style={{
+                  padding: '4px 10px', background: '#E8F5E9', color: '#1D9E75',
+                  borderRadius: '99px', fontSize: '12px',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}>
+                  {kw}
+                  <span onClick={() => removeKeyword(kw)}
+                    style={{ cursor: 'pointer', opacity: 0.7, fontSize: '14px' }}>×</span>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </Section>
+
+      {/* SEÇÃO 4 — Integrações */}
+      <Section title="Integrações (opcional)">
+        <Field label="LinkedIn">
+          <Input value={form.linkedin_url}
+            onChange={v => setForm(f => ({ ...f, linkedin_url: v }))}
             placeholder="https://linkedin.com/in/seu-perfil" />
         </Field>
-        <Field label="Chat ID do Telegram (para alertas)">
-          <input style={inputStyle} value={form.telegram_chat_id}
-            onChange={e => setForm(f => ({ ...f, telegram_chat_id: e.target.value }))}
-            placeholder="Ex: 123456789" />
-          <span style={{ fontSize: '11px', color: '#999', marginTop: '4px', display: 'block' }}>
-            Para obter: abra o Telegram, busque @userinfobot e envie /start
-          </span>
-        </Field>
-        <Field label={`Score mínimo para notificar: ${form.min_score_notify}/10`}>
-          <input type="range" min="4" max="9" step="0.5"
-            value={form.min_score_notify}
-            onChange={e => setForm(f => ({ ...f, min_score_notify: parseFloat(e.target.value) }))}
-            style={{ width: '100%' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999' }}>
-            <span>4 — Mais vagas</span>
-            <span>9 — Só as melhores</span>
-          </div>
-        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <Field label="Chat ID do Telegram">
+            <Input value={form.telegram_chat_id}
+              onChange={v => setForm(f => ({ ...f, telegram_chat_id: v }))}
+              placeholder="Ex: 123456789" />
+            <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+              Busque @userinfobot no Telegram e envie /start
+            </div>
+          </Field>
+          <Field label={`Score mínimo para alertas: ${form.min_score_notify}/10`}>
+            <input type="range" min="4" max="9" step="0.5"
+              value={form.min_score_notify}
+              onChange={e => setForm(f => ({ ...f, min_score_notify: parseFloat(e.target.value) }))}
+              style={{ width: '100%', marginTop: '8px' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between',
+              fontSize: '11px', color: '#999', marginTop: '2px' }}>
+              <span>4 — mais vagas</span><span>9 — só as melhores</span>
+            </div>
+          </Field>
+        </div>
       </Section>
+
+      {saveError && (
+        <div style={{ padding: '12px 16px', background: '#fff0f0', color: '#C0392B',
+          borderRadius: '8px', fontSize: '13px', marginBottom: '16px' }}>
+          ⚠️ {saveError}
+        </div>
+      )}
 
       <button onClick={handleSave} disabled={saving}
         style={{
           width: '100%', padding: '14px',
           background: saved ? '#27AE60' : saving ? '#ccc' : '#1D9E75',
           color: 'white', border: 'none', borderRadius: '10px',
-          fontSize: '15px', fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
+          fontSize: '15px', fontWeight: 500,
+          cursor: saving ? 'not-allowed' : 'pointer',
           transition: 'background 0.2s',
         }}>
-        {saving ? 'Salvando...' : saved ? 'Perfil salvo!' : 'Salvar perfil'}
+        {saving ? '⏳ Salvando...'
+          : saved ? '✅ Perfil salvo!'
+          : isNewUser ? '🚀 Salvar e começar a buscar vagas'
+          : 'Salvar alterações'}
       </button>
 
-      {saveError && (
-        <div style={{
-          marginTop: '12px', padding: '10px 14px',
-          background: '#FFF0F0', color: '#C0392B',
-          borderRadius: '8px', fontSize: '13px', lineHeight: 1.5,
-        }}>
-          {saveError}
+      {!isNewUser && (
+        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12px', color: '#bbb' }}>
+          Suas alterações serão aplicadas no próximo ciclo de coleta de vagas
         </div>
       )}
     </div>
+  )
+}
+
+function Section({ title, children, required }) {
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px',
+        marginBottom: '16px', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>
+        <h2 style={{ fontSize: '15px', fontWeight: 500, margin: 0, color: '#222' }}>
+          {title}
+        </h2>
+        {required && (
+          <span style={{ fontSize: '10px', background: '#fff3e0', color: '#E65100',
+            padding: '2px 7px', borderRadius: '99px', fontWeight: 500 }}>
+            Obrigatório
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      <label style={{ fontSize: '13px', fontWeight: 500, color: '#444',
+        display: 'block', marginBottom: '6px' }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+function Input({ value, onChange, placeholder, type = 'text', highlight, ...rest }) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        width: '100%', padding: '10px 12px', borderRadius: '8px',
+        border: highlight ? '1.5px solid #F39C12' : '1px solid #ddd',
+        fontSize: '14px', boxSizing: 'border-box',
+        background: highlight ? '#FFFDE7' : 'white',
+        outline: 'none',
+      }}
+      {...rest}
+    />
   )
 }

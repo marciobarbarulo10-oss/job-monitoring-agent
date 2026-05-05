@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { AuthContext } from '../components/AuthContext'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || window.location.origin
 
 const KEYWORD_SUGGESTIONS = [
   'importação', 'exportação', 'SISCOMEX', 'NCM', 'drawback',

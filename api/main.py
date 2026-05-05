@@ -30,12 +30,11 @@ def _startup():
     init_db()
     init_auth_db()
 
-_cors_origins = [
-    o.strip() for o in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173,http://localhost:5174"
-    ).split(",")
-]
+_cors_env = os.getenv("CORS_ORIGINS", "")
+if _cors_env:
+    _cors_origins = [o.strip() for o in _cors_env.split(",")]
+else:
+    _cors_origins = ["*"]  # produção: frontend e backend na mesma URL, sem restrição necessária
 
 app.add_middleware(
     CORSMiddleware,
